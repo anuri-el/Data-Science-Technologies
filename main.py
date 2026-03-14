@@ -25,9 +25,24 @@ def main():
 
     all_stats = {}
     for cur in CURRENCIES:
-        st = compute_statistics(df[cur].values, cur)
+        st = compute_statistics(df[cur].values, f"{cur}_real")
         all_stats[cur] = st
         print_statistics(st)
+
+    synthetics = {}
+    for cur in CURRENCIES:
+        y_real = df[cur].values
+        y_synth = synthesize_model(y_real, trends[cur], dist="normal")
+        synthetics[cur] = y_synth
+
+        st_synth = compute_statistics(y_synth, f"{cur}_synth")
+        print_statistics(st_synth)
+
+        kolmogorov_smirnov_test(y_real, y_synth, cur)
+
+        st_real = all_stats[cur]
+        print(f"Різниця mean:   {abs(st_real["mean"] - st_synth["mean"]):.3f} UAH")
+        print(f"Різниця std:    {abs(st_real["std"] - st_synth["std"]):.3f} UAH")
 
 
 def fetch_nbu_rate(currency: str, date: datetime):
@@ -128,6 +143,28 @@ def print_trend_info(cur: str, tr: dict):
                     r2 = {tr["r2_quad"]}
 
     Кращий тренд: {best}""")
+
+
+def synthesize_model(y_real: np.ndarray, trend_params: dict, dist: str = "normal"):
+    x = np.arange(len(y_real))
+    p2 = trend_params["p_quad"]
+    trend = np.polyval(p2, x)
+    resid = y_real - trend
+    sigma = np.std(resid)
+
+    if dist == "normal":
+        noise = np.random.normal(loc=np.mean(resid), scale=sigma, size=len(y_real))
+    else:
+        a, b = np.min(resid), np.max(resid)
+        noise = np.random.uniform(a, b, size=len(y_real))
+
+    return trend + noise
+
+
+def kolmogorov_smirnov_test(real: np.ndarray, synth: np.ndarray, label: str):
+    ks_stats, p_val = stats.ks_2samp(real, synth)
+    verdict = "models are similar" if p_val > 0.05 else "significant difference"
+    print(f"KS-test [{label}]: D={ks_stats:.6f} p={p_val:.6f} - {verdict}")
 
 
 if __name__ == "__main__":

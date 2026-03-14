@@ -11,6 +11,7 @@ def main():
     CURRENCIES = ["USD", "EUR", "GBP"]
     DAYS_BACK = 365
     OUTPUT_CSV = "outputs/nbu_exchange_rates.csv"
+    COLORS = {"USD": "#2196F3", "EUR": "#4CAF50", "GBP": "#FF9800"}
 
     # df = parse_nbu_data(currencies=CURRENCIES, days_back=DAYS_BACK)
 
@@ -47,7 +48,9 @@ def main():
         print(f"Різниця mean:   {abs(st_real["mean"] - st_synth["mean"]):.3f} UAH")
         print(f"Різниця std:    {abs(st_real["std"] - st_synth["std"]):.3f} UAH")
 
-    plot_currency_trends(df, trends, "outputs/currency_trends.png", CURRENCIES)
+    plot_currency_trends(df, trends, "outputs/currency_trends.png", CURRENCIES, COLORS)
+    plot_residuals(df, "outputs/residuals.png", trends, CURRENCIES, COLORS)
+    plot_real_synth_comparison(df, synthetics, "outputs/real_synth.png", CURRENCIES, COLORS)
 
 
 def fetch_nbu_rate(currency: str, date: datetime):
@@ -182,9 +185,7 @@ def kolmogorov_smirnov_test(real: np.ndarray, synth: np.ndarray, label: str):
     print(f"KS-test [{label}]: D={ks_stats:.6f} p={p_val:.6f} - {verdict}")
 
 
-def plot_currency_trends(df: pd.DataFrame, trends: dict, output_path: str, currencies: list):
-    COLORS = {"USD": "#2196F3", "EUR": "#4CAF50", "GBP": "#FF9800"}
-
+def plot_currency_trends(df: pd.DataFrame, trends: dict, output_path: str, currencies: list, colors: dict):
     n_cur = len(currencies)
     fig, axes = plt.subplots(n_cur, 1, figsize=(12, 9), facecolor="#0F1117")
 
@@ -195,20 +196,76 @@ def plot_currency_trends(df: pd.DataFrame, trends: dict, output_path: str, curre
         y = df[cur].values
         tr = trends[cur]
 
-        ax.plot(dates, y, color=COLORS[cur], alpha=0.85, label="real_data")
-        ax.plot(dates, tr["y_linear"], "--", color="#FF5252", alpha=0.9, label=f"linear r2={tr["r2_linear"]:.3f}")
-        ax.plot(dates, tr["y_quad"], "-.", color="#FFD700", alpha=0.9, label=f"quad r2={tr["r2_quad"]:.3f}")
-
-        # ax.set_xlim(dates.min(), dates.max())
-        ax.margins(x=0)
+        ax.plot(dates, y, color=colors[cur], alpha=0.8, label="real_data")
+        ax.plot(dates, tr["y_linear"], linestyle="--", color="#FF5252", alpha=0.9, label=f"linear r2={tr["r2_linear"]:.3f}")
+        ax.plot(dates, tr["y_quad"], linestyle="-.", color="#FFD700", alpha=0.9, label=f"quad r2={tr["r2_quad"]:.3f}")
 
         ax_style(ax, f"{cur}/UAH - курс та тренди")
         ax.set_ylabel("UAH", color="#AAAAAA", fontsize=8)
-        ax.legend(fontsize=7, facecolor="#1A1D27", edgecolor="#444444", labelcolor="#FFFFFF", loc="upper left")
+        # ax.legend(fontsize=7, facecolor="#1A1D27", edgecolor="#444444", labelcolor="#FFFFFF", loc="upper left")
     
     plt.tight_layout(pad=3)
     plt.savefig(output_path)
     plt.show()
+    print(f"Currency trends were saved to {output_path}.")
+
+
+def plot_residuals(df: pd.DataFrame, output_path: str, trends: dict, currencies: list, colors: dict):
+    n_cur = len(currencies)
+    fig, axes = plt.subplots(n_cur, 1, figsize=(12, 9), facecolor="#0F1117")
+    
+    dates = pd.to_datetime(df["date"])
+
+    for i, cur in enumerate(currencies):
+        ax = axes[i]
+        resid = df[cur].values - trends[cur]["y_quad"]
+
+        ax.bar(dates, resid, width=1.5, color=colors[cur], alpha=0.7)
+
+        ax.axhline(0, color="#FFFFFF", linewidth=0.8, alpha=0.5)
+        
+        sigma = np.std(resid)
+        ax.axhline(sigma, linestyle="--", color="#FF5252", linewidth=1, alpha=0.8, label=f"+sigma ({sigma:.3f})")
+        ax.axhline(-sigma, linestyle="--", color="#FF5252", linewidth=1, alpha=0.8, label=f"-sigma ({-sigma:.3f})")
+
+        ax_style(ax, f"{cur} - residuals (real - quad trend)")
+        ax.set_ylabel("delta UAH", color="#AAAAAA", fontsize=8)
+    
+    plt.tight_layout(pad=3)
+    plt.savefig(output_path)
+    plt.show()
+    print(f"Residuals were saved to {output_path}.")
+
+
+def plot_real_synth_comparison(df: pd.DataFrame, synthetics: dict, output_path: str, currencies: list, colors: dict):
+    n_cur = len(currencies)
+    fig, axes = plt.subplots(n_cur, 1, figsize=(12, 9), facecolor="#0F1117")
+
+    dates = pd.to_datetime(df["date"])
+
+    for i, cur in enumerate(currencies):
+        ax = axes[i]
+        y_real = df[cur].values
+        y_synth = synthetics[cur]
+
+        ax.plot(dates, y_real, color=colors[cur], linewidth=1.2, alpha=0.85, label="real")
+        ax.plot(dates, y_synth, color="#E040FB", linewidth=1, alpha=0.75, linestyle="--", label="synth")
+
+        ax_style(ax, f"{cur} - real vs. synth")
+        ax.set_ylabel("UAH", color="#AAAAAA", fontsize=8)
+    
+    plt.tight_layout(pad=3)
+    plt.savefig(output_path)
+    plt.show()
+    print(f"real vs synth plot was saved to {output_path}.")
+
+
+def plot_histograms():
+    pass
+
+
+def plot_qq():
+    pass
 
 
 def ax_style(ax, title=""):
@@ -218,6 +275,8 @@ def ax_style(ax, title=""):
         spine.set_edgecolor("#333344")
     if title:
         ax.set_title(title, color="#FFFFFF", fontsize=10, fontweight="bold", pad=5)
+    ax.margins(x=0.01)
+    ax.legend(fontsize=7, facecolor="#1A1D27", edgecolor="#444444", labelcolor="#FFFFFF", loc="upper left")
     ax.grid(linestyle="--", color="#555566", alpha=0.15, linewidth=0.6)
 
 

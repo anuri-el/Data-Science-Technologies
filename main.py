@@ -15,6 +15,14 @@ def main():
 
     save_to_csv(df, OUTPUT_CSV)
 
+    x = np.arange(len(df))
+    trends = {}
+    for cur in CURRENCIES:
+        y = df[cur].values
+        tr = fit_trend(x, y)
+        trends[cur] = tr
+        print_trend_info(cur, tr)
+
     all_stats = {}
     for cur in CURRENCIES:
         st = compute_statistics(df[cur].values, cur)
@@ -83,7 +91,7 @@ def compute_statistics(series: np.ndarray, label: str):
 
 def print_statistics(stats_dict: dict):
     print(f"""
-    --------------{stats_dict["label"]}--------------
+    ------------------{stats_dict["label"]}------------------
     Кількість спостережень: {stats_dict["n"]}
     Математичне очікування: {stats_dict["mean"]:.3f}
     Медіана:                {stats_dict["median"]:.3f}
@@ -93,6 +101,33 @@ def print_statistics(stats_dict: dict):
     Асиметрія:              {stats_dict["skewness"]:.3f}
     Ексцес:                 {stats_dict["kurtosis"]:.3f}
     ДІ 95% (mean):          {stats_dict["ci95_lo"]:.3f} - {stats_dict["ci95_hi"]:.3f}""")
+
+
+def fit_trend(x: np.ndarray, y: np.ndarray):
+    p1 = np.polyfit(x, y, 1)
+    y_lin = np.polyval(p1, x)
+    r2_lin = 1 - np.sum((y - y_lin) ** 2) / np.sum((y - np.mean(y)) ** 2)
+
+    p2 = np.polyfit(x, y, 2)
+    y_quad = np.polyval(p2, x)
+    r2_quad = 1 - np.sum((y - y_quad) ** 2) / np.sum((y - np.mean(y)) ** 2)
+
+    return dict(p_linear=p1, y_linear=y_lin, r2_linear=r2_lin, 
+                p_quad=p2, y_quad=y_quad, r2_quad=r2_quad)
+
+
+def print_trend_info(cur: str, tr: dict):
+    p1, p2 = tr["p_linear"], tr["p_quad"]
+    best = "quad" if tr["r2_quad"] > tr["r2_linear"] else "linear"
+    print(f"""
+    ------------------{cur}------------------
+    Лінійний:       y = {p1[0]:.6f} * x + {p1[1]:.6f}
+                    r2 = {tr["r2_linear"]}
+
+    Квадратичний:   y = {p2[0]:.6f} * x2 + {p2[1]:.6f} * x + {p2[2]:.6f}
+                    r2 = {tr["r2_quad"]}
+
+    Кращий тренд: {best}""")
 
 
 if __name__ == "__main__":

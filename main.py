@@ -3,6 +3,7 @@ import pandas as pd
 import numpy as np
 from scipy import stats
 from datetime import datetime, timedelta
+import matplotlib.pyplot as plt
 import os
 
 
@@ -11,9 +12,11 @@ def main():
     DAYS_BACK = 365
     OUTPUT_CSV = "outputs/nbu_exchange_rates.csv"
 
-    df = parse_nbu_data(currencies=CURRENCIES, days_back=DAYS_BACK)
+    # df = parse_nbu_data(currencies=CURRENCIES, days_back=DAYS_BACK)
 
-    save_to_csv(df, OUTPUT_CSV)
+    # df = save_to_csv(df, OUTPUT_CSV)
+
+    df = load_or_fetch_data(OUTPUT_CSV, CURRENCIES, DAYS_BACK)
 
     x = np.arange(len(df))
     trends = {}
@@ -43,6 +46,8 @@ def main():
         st_real = all_stats[cur]
         print(f"Різниця mean:   {abs(st_real["mean"] - st_synth["mean"]):.3f} UAH")
         print(f"Різниця std:    {abs(st_real["std"] - st_synth["std"]):.3f} UAH")
+
+    plot_currency_trends(df, trends, "outputs/currency_trends.png", CURRENCIES)
 
 
 def fetch_nbu_rate(currency: str, date: datetime):
@@ -87,6 +92,16 @@ def save_to_csv(df: pd.DataFrame, path: str):
 
     print(f"File: {path}")
     print(f"Dataset size: {df.shape[0]} rows * {df.shape[1]} columns")
+
+
+def load_or_fetch_data(csv_path: str, currencies: list, days_back: int):
+    if os.path.exists(csv_path):
+        df = pd.read_csv(csv_path)
+    else:
+        df = parse_nbu_data(currencies, days_back)
+        save_to_csv(df, csv_path)
+    
+    return df
 
 
 def compute_statistics(series: np.ndarray, label: str):
@@ -165,6 +180,45 @@ def kolmogorov_smirnov_test(real: np.ndarray, synth: np.ndarray, label: str):
     ks_stats, p_val = stats.ks_2samp(real, synth)
     verdict = "models are similar" if p_val > 0.05 else "significant difference"
     print(f"KS-test [{label}]: D={ks_stats:.6f} p={p_val:.6f} - {verdict}")
+
+
+def plot_currency_trends(df: pd.DataFrame, trends: dict, output_path: str, currencies: list):
+    COLORS = {"USD": "#2196F3", "EUR": "#4CAF50", "GBP": "#FF9800"}
+
+    n_cur = len(currencies)
+    fig, axes = plt.subplots(n_cur, 1, figsize=(12, 9), facecolor="#0F1117")
+
+    dates = pd.to_datetime(df["date"])
+
+    for i, cur in enumerate(currencies):
+        ax = axes[i]
+        y = df[cur].values
+        tr = trends[cur]
+
+        ax.plot(dates, y, color=COLORS[cur], alpha=0.85, label="real_data")
+        ax.plot(dates, tr["y_linear"], "--", color="#FF5252", alpha=0.9, label=f"linear r2={tr["r2_linear"]:.3f}")
+        ax.plot(dates, tr["y_quad"], "-.", color="#FFD700", alpha=0.9, label=f"quad r2={tr["r2_quad"]:.3f}")
+
+        # ax.set_xlim(dates.min(), dates.max())
+        ax.margins(x=0)
+
+        ax_style(ax, f"{cur}/UAH - курс та тренди")
+        ax.set_ylabel("UAH", color="#AAAAAA", fontsize=8)
+        ax.legend(fontsize=7, facecolor="#1A1D27", edgecolor="#444444", labelcolor="#FFFFFF", loc="upper left")
+    
+    plt.tight_layout(pad=3)
+    plt.savefig(output_path)
+    plt.show()
+
+
+def ax_style(ax, title=""):
+    ax.set_facecolor("#1A1D27")
+    ax.tick_params(colors="#AAAAAA")
+    for spine in ax.spines.values():
+        spine.set_edgecolor("#333344")
+    if title:
+        ax.set_title(title, color="#FFFFFF", fontsize=10, fontweight="bold", pad=5)
+    ax.grid(linestyle="--", color="#555566", alpha=0.15, linewidth=0.6)
 
 
 if __name__ == "__main__":

@@ -48,9 +48,11 @@ def main():
         print(f"Різниця mean:   {abs(st_real["mean"] - st_synth["mean"]):.3f} UAH")
         print(f"Різниця std:    {abs(st_real["std"] - st_synth["std"]):.3f} UAH")
 
-    plot_currency_trends(df, trends, "outputs/currency_trends.png", CURRENCIES, COLORS)
-    plot_residuals(df, "outputs/residuals.png", trends, CURRENCIES, COLORS)
-    plot_real_synth_comparison(df, synthetics, "outputs/real_synth.png", CURRENCIES, COLORS)
+    # plot_currency_trends(df, trends, "outputs/currency_trends.png", CURRENCIES, COLORS)
+    # plot_residuals(df, "outputs/residuals.png", trends, CURRENCIES, COLORS)
+    # plot_real_synth_comparison(df, synthetics, "outputs/real_synth.png", CURRENCIES, COLORS)
+    plot_histograms(df, synthetics, "outputs/histograms.png", CURRENCIES, COLORS)
+    plot_histograms_detrended(df, trends, synthetics, "outputs/histograms.png", CURRENCIES, COLORS)
 
 
 def fetch_nbu_rate(currency: str, date: datetime):
@@ -155,10 +157,10 @@ def print_trend_info(cur: str, tr: dict):
     print(f"""
     ------------------{cur}------------------
     Лінійний:       y = {p1[0]:.6f} * x + {p1[1]:.6f}
-                    r2 = {tr["r2_linear"]}
+                    r2 = {tr["r2_linear"]:.6f}
 
     Квадратичний:   y = {p2[0]:.6f} * x2 + {p2[1]:.6f} * x + {p2[2]:.6f}
-                    r2 = {tr["r2_quad"]}
+                    r2 = {tr["r2_quad"]:.6f}
 
     Кращий тренд: {best}""")
 
@@ -260,8 +262,65 @@ def plot_real_synth_comparison(df: pd.DataFrame, synthetics: dict, output_path: 
     print(f"real vs synth plot was saved to {output_path}.")
 
 
-def plot_histograms():
-    pass
+def plot_histograms(df: pd.DataFrame, synthetics: dict, output_path: str, currencies: list, colors: dict):
+    n_cur = len(currencies)
+    fig, axes = plt.subplots(1, n_cur, figsize=(18, 7), facecolor="#0F1117")
+
+    for i, cur in enumerate(currencies):
+        ax = axes[i]
+
+        y_real = df[cur].values
+        y_synth = synthetics[cur]
+        n_bins = min(35, max(10, len(y_real) // 6))
+
+        ax.hist(y_real, bins=n_bins, density=True, color=colors[cur], alpha=0.7, label="real")
+        ax.hist(y_synth, bins=n_bins, density=True, color="#E040FB", alpha=0.5, label="synth")
+
+        kde_real = stats.gaussian_kde(y_real)
+        kde_synth = stats.gaussian_kde(y_synth)
+        xr = np.linspace(min(y_real.min(), y_synth.min()), max(y_real.max(), y_synth.max()), 300)
+        ax.plot(xr, kde_real(xr), color="#FFFFFF", linewidth=1.5, label="kde_real")
+        ax.plot(xr, kde_synth(xr), color="#FF80AB", linewidth=1.5, linestyle="--", label="kde_synth")
+
+        ax_style(ax, f"{cur} - histogram / kde")
+        ax.set_ylabel("Density", color="#AAAAAA", fontsize=8)
+
+    plt.tight_layout(pad=3)
+    plt.savefig(output_path)
+    plt.show()
+
+
+def plot_histograms_detrended(df: pd.DataFrame, trends: dict, synthetics: dict, output_path: str, currencies: list, colors: dict):
+    n_cur = len(currencies)
+    fig, axes = plt.subplots(1, n_cur, figsize=(18, 7), facecolor="#0F1117")
+
+    for i, cur in enumerate(currencies):
+        ax = axes[i]
+
+        y_real = df[cur].values
+        real_trend = trends[cur]["y_quad"]
+        real_residuals = y_real - real_trend
+
+        y_synth = synthetics[cur]
+        synth_residuals = y_synth - real_trend
+
+        n_bins = min(35, max(10, len(y_real) // 6))
+
+        ax.hist(real_residuals, bins=n_bins, density=True, color=colors[cur], alpha=0.7, label="real")
+        ax.hist(synth_residuals, bins=n_bins, density=True, color="#E040FB", alpha=0.5, label="synth")
+
+        kde_real = stats.gaussian_kde(real_residuals)
+        kde_synth = stats.gaussian_kde(synth_residuals)
+        xr = np.linspace(min(real_residuals.min(), synth_residuals.min()), max(real_residuals.max(), synth_residuals.max()))
+        ax.plot(xr, kde_real(xr), color="#FFFFFF", linewidth=1.5, label="kde_real")
+        ax.plot(xr, kde_synth(xr), color="#FF80AB", linewidth=1.5, linestyle="--", label="kde_synth")
+
+        ax_style(ax, f"{cur} - histogram / kde")
+        ax.set_ylabel("Density", color="#AAAAAA", fontsize=8)
+
+    plt.tight_layout(pad=3)
+    plt.savefig(output_path)
+    plt.show()
 
 
 def plot_qq():

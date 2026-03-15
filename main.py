@@ -10,15 +10,16 @@ import os
 def main():
     CURRENCIES = ["USD", "EUR", "GBP"]
     DAYS_BACK = 365
-    OUTPUT_CSV = "outputs/nbu_exchange_rates.csv"
+    CSV_PATH = "outputs/nbu_exchange_rates_1y.csv"
     COLORS = {"USD": "#2196F3", "EUR": "#4CAF50", "GBP": "#FF9800"}
 
     # df = parse_nbu_data(currencies=CURRENCIES, days_back=DAYS_BACK)
 
-    # df = save_to_csv(df, OUTPUT_CSV)
+    # df = save_to_csv(df, CSV_PATH)
 
-    df = load_or_fetch_data(OUTPUT_CSV, CURRENCIES, DAYS_BACK)
+    df = load_or_fetch_data(CSV_PATH, CURRENCIES, DAYS_BACK)
 
+    print("============= Оцінка динаміки тренду реальний даних =============")
     x = np.arange(len(df))
     trends = {}
     for cur in CURRENCIES:
@@ -27,12 +28,14 @@ def main():
         trends[cur] = tr
         print_trend_info(cur, tr)
 
+    print("============= Статистичні характеристики реальних даних =============")
     all_stats = {}
     for cur in CURRENCIES:
         st = compute_statistics(df[cur].values, f"{cur}_real")
         all_stats[cur] = st
         print_statistics(st)
 
+    print("============= Синтез та верифікація моделі даних =============")
     synthetics = {}
     for cur in CURRENCIES:
         y_real = df[cur].values
@@ -45,14 +48,30 @@ def main():
         kolmogorov_smirnov_test(y_real, y_synth, cur)
 
         st_real = all_stats[cur]
-        print(f"Різниця mean:   {abs(st_real["mean"] - st_synth["mean"]):.3f} UAH")
-        print(f"Різниця std:    {abs(st_real["std"] - st_synth["std"]):.3f} UAH")
+        print(f"    Різниця mean:   {abs(st_real["mean"] - st_synth["mean"]):.3f} UAH")
+        print(f"    Різниця std:    {abs(st_real["std"] - st_synth["std"]):.3f} UAH")
+    
+    print("============= Аналіз отриманих результатів =============")
+    for cur in CURRENCIES:
+        tr = trends[cur]
+        st = all_stats[cur]
+        best_r2 = max(tr["r2_linear"], tr["r2_quad"])
+        best_name = "quad" if tr["r2_quad"] > tr["r2_linear"] else "linear"
+        direction = "зростаючий" if tr["p_linear"][0] > 0 else "спадаючий"
 
-    # plot_currency_trends(df, trends, "outputs/currency_trends.png", CURRENCIES, COLORS)
-    # plot_residuals(df, "outputs/residuals.png", trends, CURRENCIES, COLORS)
-    # plot_real_synth_comparison(df, synthetics, "outputs/real_synth.png", CURRENCIES, COLORS)
-    plot_histograms(df, synthetics, "outputs/histograms.png", CURRENCIES, COLORS)
-    plot_histograms_detrended(df, trends, synthetics, "outputs/histograms.png", CURRENCIES, COLORS)
+        print(f"    ------------------{cur}------------------")
+        print(f"    N={st["n"]} спостережень, mu={st["mean"]:.3f} UAH, sigma={st["std"]:.3f} UAH")
+        print(f"    Коефіцієнт варіації: {st["cv_pct"]:.2f} ({"висока" if st["cv_pct"] > 15 else "помірна"} мінливість)")
+        print(f"    Асиметрія: {st["skewness"]:.3f} ({"правостороння" if st["skewness"] > 0 else "лівостороння"})")
+        print(f"    Домінуючий тренд: {best_name} (r2={best_r2:.4f}), напрямок: {direction}")
+
+    print()
+    plot_currency_trends(df, trends, "outputs/currency_trends.png", CURRENCIES, COLORS)
+    plot_residual_analysis(df, "outputs/residual_analysis.png", trends, CURRENCIES, COLORS)
+    plot_real_vs_synthetic_series(df, synthetics, "outputs/real_vs_synthetic_series.png", CURRENCIES, COLORS)
+    plot_raw_value_distributions(df, synthetics, "outputs/raw_distributions.png", CURRENCIES, COLORS)
+    plot_residual_distributions(df, trends, synthetics, "outputs/residual_distributions.png", CURRENCIES, COLORS)
+    plot_qq_normality_check(df, trends, "outputs/qq_normality_check.png", CURRENCIES, COLORS)
 
 
 def fetch_nbu_rate(currency: str, date: datetime):
@@ -125,8 +144,7 @@ def compute_statistics(series: np.ndarray, label: str):
 
 
 def print_statistics(stats_dict: dict):
-    print(f"""
-    ------------------{stats_dict["label"]}------------------
+    print(f"""  ------------------{stats_dict["label"]}------------------
     Кількість спостережень: {stats_dict["n"]}
     Математичне очікування: {stats_dict["mean"]:.3f}
     Медіана:                {stats_dict["median"]:.3f}
@@ -135,7 +153,8 @@ def print_statistics(stats_dict: dict):
     Коефіцієнт варіації:    {stats_dict["cv_pct"]:.3f}
     Асиметрія:              {stats_dict["skewness"]:.3f}
     Ексцес:                 {stats_dict["kurtosis"]:.3f}
-    ДІ 95% (mean):          {stats_dict["ci95_lo"]:.3f} - {stats_dict["ci95_hi"]:.3f}""")
+    ДІ 95% (mean):          {stats_dict["ci95_lo"]:.3f} - {stats_dict["ci95_hi"]:.3f}
+    """)
 
 
 def fit_trend(x: np.ndarray, y: np.ndarray):
@@ -154,15 +173,13 @@ def fit_trend(x: np.ndarray, y: np.ndarray):
 def print_trend_info(cur: str, tr: dict):
     p1, p2 = tr["p_linear"], tr["p_quad"]
     best = "quad" if tr["r2_quad"] > tr["r2_linear"] else "linear"
-    print(f"""
-    ------------------{cur}------------------
+    print(f"""  ------------------{cur}------------------
     Лінійний:       y = {p1[0]:.6f} * x + {p1[1]:.6f}
                     r2 = {tr["r2_linear"]:.6f}
-
     Квадратичний:   y = {p2[0]:.6f} * x2 + {p2[1]:.6f} * x + {p2[2]:.6f}
                     r2 = {tr["r2_quad"]:.6f}
-
-    Кращий тренд: {best}""")
+    Кращий тренд: {best}
+    """)
 
 
 def synthesize_model(y_real: np.ndarray, trend_params: dict, dist: str = "normal"):
@@ -184,7 +201,7 @@ def synthesize_model(y_real: np.ndarray, trend_params: dict, dist: str = "normal
 def kolmogorov_smirnov_test(real: np.ndarray, synth: np.ndarray, label: str):
     ks_stats, p_val = stats.ks_2samp(real, synth)
     verdict = "models are similar" if p_val > 0.05 else "significant difference"
-    print(f"KS-test [{label}]: D={ks_stats:.6f} p={p_val:.6f} - {verdict}")
+    print(f"    KS-test [{label}]: D={ks_stats:.6f} p={p_val:.6f} - {verdict}")
 
 
 def plot_currency_trends(df: pd.DataFrame, trends: dict, output_path: str, currencies: list, colors: dict):
@@ -202,17 +219,17 @@ def plot_currency_trends(df: pd.DataFrame, trends: dict, output_path: str, curre
         ax.plot(dates, tr["y_linear"], linestyle="--", color="#FF5252", alpha=0.9, label=f"linear r2={tr["r2_linear"]:.3f}")
         ax.plot(dates, tr["y_quad"], linestyle="-.", color="#FFD700", alpha=0.9, label=f"quad r2={tr["r2_quad"]:.3f}")
 
-        ax_style(ax, f"{cur}/UAH - курс та тренди")
+        ax_style(ax, f"{cur}/UAH — курс та тренди")
         ax.set_ylabel("UAH", color="#AAAAAA", fontsize=8)
         # ax.legend(fontsize=7, facecolor="#1A1D27", edgecolor="#444444", labelcolor="#FFFFFF", loc="upper left")
     
     plt.tight_layout(pad=3)
     plt.savefig(output_path)
     plt.show()
-    print(f"Currency trends were saved to {output_path}.")
+    print(f"Trend analysis: {output_path}")
 
 
-def plot_residuals(df: pd.DataFrame, output_path: str, trends: dict, currencies: list, colors: dict):
+def plot_residual_analysis(df: pd.DataFrame, output_path: str, trends: dict, currencies: list, colors: dict):
     n_cur = len(currencies)
     fig, axes = plt.subplots(n_cur, 1, figsize=(12, 9), facecolor="#0F1117")
     
@@ -227,19 +244,19 @@ def plot_residuals(df: pd.DataFrame, output_path: str, trends: dict, currencies:
         ax.axhline(0, color="#FFFFFF", linewidth=0.8, alpha=0.5)
         
         sigma = np.std(resid)
-        ax.axhline(sigma, linestyle="--", color="#FF5252", linewidth=1, alpha=0.8, label=f"+sigma ({sigma:.3f})")
-        ax.axhline(-sigma, linestyle="--", color="#FF5252", linewidth=1, alpha=0.8, label=f"-sigma ({-sigma:.3f})")
+        ax.axhline(sigma, linestyle="--", color="#FF5252", linewidth=1, alpha=0.8, label=f"+σ ({sigma:.3f})")
+        ax.axhline(-sigma, linestyle="--", color="#FF5252", linewidth=1, alpha=0.8, label=f"-σ ({-sigma:.3f})")
 
-        ax_style(ax, f"{cur} - residuals (real - quad trend)")
-        ax.set_ylabel("delta UAH", color="#AAAAAA", fontsize=8)
+        ax_style(ax, f"{cur} — Залишки (Реальне − Квадр.тренд)")
+        ax.set_ylabel("Δ UAH", color="#AAAAAA", fontsize=8)
     
     plt.tight_layout(pad=3)
     plt.savefig(output_path)
     plt.show()
-    print(f"Residuals were saved to {output_path}.")
+    print(f"Residual diagnostics: {output_path}")
 
 
-def plot_real_synth_comparison(df: pd.DataFrame, synthetics: dict, output_path: str, currencies: list, colors: dict):
+def plot_real_vs_synthetic_series(df: pd.DataFrame, synthetics: dict, output_path: str, currencies: list, colors: dict):
     n_cur = len(currencies)
     fig, axes = plt.subplots(n_cur, 1, figsize=(12, 9), facecolor="#0F1117")
 
@@ -253,18 +270,18 @@ def plot_real_synth_comparison(df: pd.DataFrame, synthetics: dict, output_path: 
         ax.plot(dates, y_real, color=colors[cur], linewidth=1.2, alpha=0.85, label="real")
         ax.plot(dates, y_synth, color="#E040FB", linewidth=1, alpha=0.75, linestyle="--", label="synth")
 
-        ax_style(ax, f"{cur} - real vs. synth")
+        ax_style(ax, f"{cur} — Реальні vs Синтетичні")
         ax.set_ylabel("UAH", color="#AAAAAA", fontsize=8)
     
     plt.tight_layout(pad=3)
     plt.savefig(output_path)
     plt.show()
-    print(f"real vs synth plot was saved to {output_path}.")
+    print(f"Real vs synthetic comparison: {output_path}")
 
 
-def plot_histograms(df: pd.DataFrame, synthetics: dict, output_path: str, currencies: list, colors: dict):
+def plot_raw_value_distributions(df: pd.DataFrame, synthetics: dict, output_path: str, currencies: list, colors: dict):
     n_cur = len(currencies)
-    fig, axes = plt.subplots(1, n_cur, figsize=(18, 7), facecolor="#0F1117")
+    fig, axes = plt.subplots(1, n_cur, figsize=(18, 6), facecolor="#0F1117")
 
     for i, cur in enumerate(currencies):
         ax = axes[i]
@@ -282,17 +299,19 @@ def plot_histograms(df: pd.DataFrame, synthetics: dict, output_path: str, curren
         ax.plot(xr, kde_real(xr), color="#FFFFFF", linewidth=1.5, label="kde_real")
         ax.plot(xr, kde_synth(xr), color="#FF80AB", linewidth=1.5, linestyle="--", label="kde_synth")
 
-        ax_style(ax, f"{cur} - histogram / kde")
+        ax_style(ax, f"{cur} — Raw value distributions")
         ax.set_ylabel("Density", color="#AAAAAA", fontsize=8)
 
     plt.tight_layout(pad=3)
     plt.savefig(output_path)
     plt.show()
+    print(f"Raw value distributions: {output_path}")
 
 
-def plot_histograms_detrended(df: pd.DataFrame, trends: dict, synthetics: dict, output_path: str, currencies: list, colors: dict):
+
+def plot_residual_distributions(df: pd.DataFrame, trends: dict, synthetics: dict, output_path: str, currencies: list, colors: dict):
     n_cur = len(currencies)
-    fig, axes = plt.subplots(1, n_cur, figsize=(18, 7), facecolor="#0F1117")
+    fig, axes = plt.subplots(1, n_cur, figsize=(18, 6), facecolor="#0F1117")
 
     for i, cur in enumerate(currencies):
         ax = axes[i]
@@ -315,16 +334,36 @@ def plot_histograms_detrended(df: pd.DataFrame, trends: dict, synthetics: dict, 
         ax.plot(xr, kde_real(xr), color="#FFFFFF", linewidth=1.5, label="kde_real")
         ax.plot(xr, kde_synth(xr), color="#FF80AB", linewidth=1.5, linestyle="--", label="kde_synth")
 
-        ax_style(ax, f"{cur} - histogram / kde")
+        ax_style(ax, f"{cur} — Residual distributions")
         ax.set_ylabel("Density", color="#AAAAAA", fontsize=8)
 
     plt.tight_layout(pad=3)
     plt.savefig(output_path)
     plt.show()
+    print(f"Residual distributions (detrended): {output_path}")
 
 
-def plot_qq():
-    pass
+def plot_qq_normality_check(df: pd.DataFrame, trends: dict, output_path: str, currencies: list, colors: dict):
+    n_cur = len(currencies)
+    fig, axes = plt.subplots(1, n_cur, figsize=(18, 6), facecolor="#0F1117")
+
+    for i, cur in enumerate(currencies):
+        ax = axes[i]
+        resid = df[cur].values - trends[cur]["y_quad"]
+        (osm, osr), (slope, intercept, r) = stats.probplot(resid, dist="norm", fit=True)
+        ax.scatter(osm, osr, color=colors[cur], s=6, alpha=0.7, label="residuals")
+        line_x = np.array([osm[0], osm[-1]])
+        ax.plot(line_x, slope * line_x + intercept, color="#FF5252", linewidth=1.5, label=f"r={r:.3f}")
+
+        ax_style(ax, f"{cur} — Q-Q plot залишків")
+        ax.set_xlabel("Теоретичні квартилі", color="#AAAAAA", fontsize=8)
+        ax.set_ylabel("Вибіркові квартилі", color="#AAAAAA", fontsize=8)
+
+    plt.tight_layout(pad=3)
+    plt.savefig(output_path)
+    plt.show()
+    print(f"Q-Q normality checks: {output_path}")
+
 
 
 def ax_style(ax, title=""):

@@ -1,7 +1,8 @@
 import numpy as np
 import matplotlib.pyplot as plt
+from scipy.optimize import minimize_scalar
 
-N = 365
+N = 3650
 a, b, c = 0.000033, -0.006952, 41.751589
 
 def main():
@@ -51,9 +52,24 @@ def main():
     trend_ext = a * t_ext**2 + b *t_ext + c
     print(f"ideal: [{trend_ext[0]:.4f} .. {trend_ext[-1]:.4f}]")
 
-    print(f"RMSE_d: { rmse(trend_ext, y_ext_d):.4f}")
-    print(f"RMSE_c: { rmse(trend_ext, y_ext_c):.4f}")
+    print(f"RMSE_d forecast: { rmse(trend_ext, y_ext_d):.4f}")
+    print(f"RMSE_c forecast: { rmse(trend_ext, y_ext_c):.4f}")
     
+    print("GROUP 2")
+
+    y_noisy2, anom_mask2 = inject_anomalies(y_clean, rate=0.08)
+    y_interp2, _ = clean_data(y_noisy2, t)
+
+    ftype_c, finfo_c = choose_filter(y_clean, t)
+    ftype_n, finfo_n = choose_filter(y_interp2, t)
+    
+    for tag, fi in [("clean", finfo_c), ("noisy/cleaned", finfo_n)]:
+        print(f"[{tag}] speed: {fi['speed']:.6f}")
+        print(f"accel: {fi['accel']:.6f} (threshold={fi['threshold']})")
+        print(f"filter: {fi['type']}")
+        print(f"alpha={fi['alpha']:.4f} beta={fi['beta']:.5f}" + (f"gamma={fi['gamma']:.6f}" if fi["gamma"] else ""))
+
+
 
     # orig vs anom plot
     plt.plot(t, y_clean)
@@ -173,6 +189,112 @@ def extrapolate(theta: np.ndarray, t_obs: np.ndarray, frac: float = 0.5):
     PHI_ext = np.vander(t_ext, deg + 1, increasing=False)
     y_ext = PHI_ext @ theta
     return t_ext, y_ext
+
+
+def estimate_trend_acceleration(y: np.ndarray, t: np.ndarray):
+    p = np.polyfit(t, y, 2)
+    speed = abs(p[1])
+    accel = abs(p[0]) * 2
+    return speed, accel
+
+
+def alpha_beta_filter(z: np.ndarray, alpha: float, beta: float):
+    n = len(z)
+    x_hat = np.zeros(n)
+    v_hat = np.zeros(n)
+    dt = 1
+
+    x_hat[0] = z[0]
+    v_hat[0] = 0
+
+    sigma_inn = np.std(np.diff(z)) if len(z) > 1 else 1
+    clip_lim = 5 * sigma_inn
+    for k in range(1, n):
+        x_pred = x_hat[k - 1] + v_hat[k - 1] * dt
+        innov = z[k] - x_pred
+        innov = np.clip(innov, -clip_lim, clip_lim)
+        x_hat[k] = x_pred + alpha * innov
+        v_hat[k] = v_hat[k - 1] + (beta / dt) * innov
+    
+    return x_hat, v_hat
+
+
+def alpha_beta_gamma_filter(z: np.ndarray, alpha: float, beta: float, gamma: float):
+    n = len(z)
+    x_hat = np.zeros(n)
+    v_hat = np.zeros(n)
+    a_hat = np.zeros(n)
+    dt = 1
+
+    x_hat[0] = z[0]
+    v_hat[0] = 0
+    a_hat[0] = 0
+
+    sigma_inn = np.std(np.diff(z)) if len(z) > 1 else 1
+    clip_lim = 5 * sigma_inn
+    accel_lim = 3 * np.std(z) / max(n ** 2, 1)
+
+    for k in range(1, n):
+        dt2 = dt * dt
+        x_pred = x_hat[k - 1] + v_hat[k - 1] * dt + 0.5 * a_hat[k - 1] * dt2
+        v_pred = v_hat[k - 1] + a_hat[k - 1] * dt
+        a_pred = a_hat[k - 1]
+
+        innov = z[k] - x_pred
+        innov = np.clip(innov, -clip_lim, clip_lim)
+        
+        x_hat[k] = x_pred + alpha * innov
+        v_hat[k] = v_pred + (beta / dt) * innov
+
+        raw_a = a_pred + (gamma / (0.5 * dt2)) * innov
+        a_hat[k] = np.clip(raw_a, -accel_lim * 1e6, accel_lim * 1e6)
+    
+    return x_hat, v_hat, a_hat
+
+
+def optimize_abg_params(z: np.ndarray, use_gamma: bool = True):
+    n_val = len(z) // 5
+    z_tr = z[:-n_val]
+    z_val = z[-n_val:]
+    
+    if use_gamma:
+        def cost_abg(alpha):
+            if alpha <= 0 or alpha >= 1:
+                return 1e9
+            beta = alpha ** 2 / (2 - alpha + 1e-9)
+            gamma = beta * alpha /2
+            xf, _, _ = alpha_beta_gamma_filter(z_tr, alpha, beta, gamma)
+            pred = xf[-1]
+            return np.mean((z_val - pred) ** 2)
+        
+        res = minimize_scalar(cost_abg, bounds=(0.05, 0.95), method="bounded")
+        alpha = float(np.clip(res.x, 0.05, 0.95))
+        beta = alpha ** 2 / (2 - alpha)
+        gamma = beta * alpha / 2
+        return alpha, beta, gamma
+    else:
+        def cost_ab(alpha):
+            if alpha <= 0 or alpha >= 1:
+                return 1e9
+            beta = alpha ** 2 / (2 - alpha + 1e-9)
+            xf, _ = alpha_beta_filter(z_tr, alpha, beta)
+            pred = xf[-1]
+            return np.mean((z_val - pred) ** 2)
+        
+        res = minimize_scalar(cost_ab, bounds=(0.05, 0.95), method="bounded")
+        alpha = float(np.clip(res.x, 0.05, 0.95))
+        beta = alpha ** 2 / (2 - alpha)
+        return alpha, beta, None
+
+
+def choose_filter(y_interp: np.ndarray, t: np.ndarray):
+    speed, accel = estimate_trend_acceleration(y_interp, t)
+    threshold = 1e-4
+    use_gamma = accel > threshold
+    ftype = "a-b-g" if use_gamma else "a-b"
+    alpha, beta, gamma = optimize_abg_params(y_interp, use_gamma=use_gamma)
+    info = dict(type=ftype, alpha=alpha, beta=beta, gamma=gamma, speed=speed, accel=accel, threshold=threshold)
+    return ftype, info
 
 
 def print_quality_table(results: list[dict], best_deg: int):

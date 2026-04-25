@@ -1,12 +1,5 @@
-# 1. Отримання вхідних даних із властивостями, заданими в Лр_1;
-# 2. Модель вхідних даних із аномальними вимірами;
-# 3. Очищення вхідних даних від аномальних вимірів. Спосіб виявлення аномалій та
-# очищення обрати самостійно;
-
 import numpy as np
 import matplotlib.pyplot as plt
-
-
 
 
 def main():
@@ -21,7 +14,24 @@ def main():
     print(f"N={N}, anom_count={anom_mask.sum()}")
 
     y_interp, detected = clean_data(y_noisy, t)
+    tp = int((detected & anom_mask).sum())
+    fp = int((detected & ~anom_mask).sum())
+    fn = int((~detected & anom_mask).sum())
+    prec = tp / (tp + fp + 1e-9)
+    rec = tp / (tp + fn + 1e-9)
+    print("Cleaning (Ensemble IQR + Modified Z-score):")
+    print(f"Detected anomalies: {detected.sum()}")
+    print(f"True positives = {tp}, FP={fp}, FN={fn}, precision={prec:.3f}, recall={rec:.3f}")
 
+    # dirty data
+    best_d, results_d = setect_best_degree(t, y_noisy)
+    print_quality_table(results_d, best_d["deg"])
+    print(f"Best degree: {best_d["deg"]}, r2={best_d["r2"]:.5f}, RMSE={best_d["rmse"]:.4f}")
+
+    # clean data
+    best_c, results_c = setect_best_degree(t, y_interp)
+    print_quality_table(results_c, best_c["deg"])
+    print(f"Best degree: {best_c["deg"]}, r2={best_c["r2"]:.5f}, RMSE={best_c["rmse"]:.4f}")
 
 
     # orig vs anom plot
@@ -85,6 +95,49 @@ def clean_data(y_noisy: np.ndarray, t: np.ndarray):
         bad_idx = np.where(detected)[0]
         y_interp[bad_idx] = np.interp(t[bad_idx], t[good_idx], y_noisy[good_idx])
     return y_interp, detected
+
+
+def compute_aic_bic(y: np.ndarray, y_hat: np.ndarray, k: int):
+    n = len(y)
+    rss = np.sum((y - y_hat) ** 2)
+    if rss <= 0:
+        rss = 1e-12
+    ll = -n / 2 * np.log(rss /n) - n / 2 * (1 + np.log(2 * np.pi))
+    aic = 2 * (k + 1) - 2 * ll
+    bic = np.log(n) * (k + 1) - 2 * ll
+    return aic, bic
+
+
+def r_squared(y: np.ndarray, y_hat: np.ndarray):
+    ss_res = np.sum((y - y_hat) ** 2)
+    ss_tot = np.sum((y - np.mean(y)) **2)
+    return 1 - ss_res / ss_tot if ss_tot > 0 else 0
+
+
+def rmse(y: np.ndarray, y_hat: np.ndarray):
+    return np.sqrt(np.mean((y - y_hat) ** 2))
+
+
+def setect_best_degree(t: np.ndarray, y: np.ndarray, max_deg: int = 8):
+    results = []
+    for deg in range(1, max_deg + 1):
+        coeffs = np.polyfit(t, y, deg)
+        y_hat = np.polyval(coeffs, t)
+        aic, bic = compute_aic_bic(y, y_hat, deg)
+        r2 = r_squared(y, y_hat)
+        rms = rmse(y, y_hat)
+        results.append(dict(deg=deg, aic=aic, bic=bic, r2=r2, rmse=rms, coeffs=coeffs))
+    
+    best = min(results, key=lambda x: x["bic"])
+    return best, results
+
+
+def print_quality_table(results: list[dict], best_deg: int):
+    print(f"{'Deg':>4} {'AIC':>10} {'BIC':>10} {'R2':>8} {'RMSE':>8}")
+    print("====")
+    for r in results:
+        star = "BEST" if r["deg"] == best_deg else ""
+        print(f"{r['deg']:>4} {r['aic']:>10.2f} {r['bic']:>10.2f} {r['r2']:>8.5f} {r['rmse']:>8.4f} {star}")
 
 
 if __name__=="__main__":

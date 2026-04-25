@@ -1,10 +1,10 @@
 import numpy as np
 import matplotlib.pyplot as plt
 
+N = 365
+a, b, c = 0.000033, -0.006952, 41.751589
 
 def main():
-    N = 365
-
     print("============= Отримання вхідних даних =============")
     t, trend, y_clean = generate_base_data(N)
     print(f"N={N}")
@@ -41,6 +41,20 @@ def main():
     diff = np.max(np.abs(p_check - theta_c))
     print(f"max|theta_lsm - theta_polyfit| = {diff:.2e} {'OK' if diff < 1e-6 else 'high diff'}")
 
+    t_ext, y_ext_d = extrapolate(theta_d, t)
+    _, y_ext_c = extrapolate(theta_c, t)
+    n_ext = len(t_ext)
+    print(f"прогноз на {n_ext} точок:")
+    print(f"lsm_d: [{y_ext_d[0]:.4f} .. {y_ext_d[-1]:.4f}]")
+    print(f"lsm_c: [{y_ext_c[0]:.4f} .. {y_ext_c[-1]:.4f}]")
+
+    trend_ext = a * t_ext**2 + b *t_ext + c
+    print(f"ideal: [{trend_ext[0]:.4f} .. {trend_ext[-1]:.4f}]")
+
+    print(f"RMSE_d: { rmse(trend_ext, y_ext_d):.4f}")
+    print(f"RMSE_c: { rmse(trend_ext, y_ext_c):.4f}")
+    
+
     # orig vs anom plot
     plt.plot(t, y_clean)
     plt.plot(t, y_noisy)
@@ -50,7 +64,6 @@ def main():
 
 def generate_base_data(n: int):
     t = np.linspace(1, 365, n)
-    a, b, c = 0.000033, -0.006952, 41.751589
     trend = a * t**2 + b * t + c
     df = 5
     noise_raw = np.random.chisquare(df, n)
@@ -150,6 +163,16 @@ def lsm_fit(t: np.ndarray, y: np.ndarray, deg: int):
         theta = np.linalg.lstsq(PHI, y, rcond=None)[0]
     y_hat = PHI @ theta
     return theta, y_hat
+
+
+def extrapolate(theta: np.ndarray, t_obs: np.ndarray, frac: float = 0.5):
+    n_ext = int(len(t_obs) * frac)
+    dt = t_obs[1] - t_obs[0]
+    t_ext = t_obs[-1] + dt * np.arange(1, n_ext + 1)
+    deg = len(theta) - 1
+    PHI_ext = np.vander(t_ext, deg + 1, increasing=False)
+    y_ext = PHI_ext @ theta
+    return t_ext, y_ext
 
 
 def print_quality_table(results: list[dict], best_deg: int):

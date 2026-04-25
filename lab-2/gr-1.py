@@ -5,7 +5,6 @@ import matplotlib.pyplot as plt
 def main():
     N = 365
 
-
     print("============= Отримання вхідних даних =============")
     t, trend, y_clean = generate_base_data(N)
     print(f"N={N}")
@@ -33,6 +32,14 @@ def main():
     print_quality_table(results_c, best_c["deg"])
     print(f"Best degree: {best_c["deg"]}, r2={best_c["r2"]:.5f}, RMSE={best_c["rmse"]:.4f}")
 
+    theta_d, y_lsm_d = lsm_fit(t, y_noisy, best_d["deg"])
+    theta_c, y_lsm_c = lsm_fit(t, y_interp, best_c["deg"])
+    print(f"theta_d (deg={best_d['deg']})" + ", ".join(f"{c:.4f}" for c in theta_d))
+    print(f"theta_c (deg={best_c['deg']})" + ", ".join(f"{c:.4f}" for c in theta_c))
+
+    p_check = np.polyfit(t, y_interp, best_c["deg"])
+    diff = np.max(np.abs(p_check - theta_c))
+    print(f"max|theta_lsm - theta_polyfit| = {diff:.2e} {'OK' if diff < 1e-6 else 'high diff'}")
 
     # orig vs anom plot
     plt.plot(t, y_clean)
@@ -132,9 +139,21 @@ def setect_best_degree(t: np.ndarray, y: np.ndarray, max_deg: int = 8):
     return best, results
 
 
+def lsm_fit(t: np.ndarray, y: np.ndarray, deg: int):
+    n = len(t)
+    PHI = np.vander(t, deg + 1, increasing=False)
+    A = PHI.T @ PHI
+    b = PHI.T @ y
+    try:
+        theta = np.linalg.solve(A, b)
+    except np.linalg.LinAlgError:
+        theta = np.linalg.lstsq(PHI, y, rcond=None)[0]
+    y_hat = PHI @ theta
+    return theta, y_hat
+
+
 def print_quality_table(results: list[dict], best_deg: int):
     print(f"{'Deg':>4} {'AIC':>10} {'BIC':>10} {'R2':>8} {'RMSE':>8}")
-    print("====")
     for r in results:
         star = "BEST" if r["deg"] == best_deg else ""
         print(f"{r['deg']:>4} {r['aic']:>10.2f} {r['bic']:>10.2f} {r['r2']:>8.5f} {r['rmse']:>8.4f} {star}")

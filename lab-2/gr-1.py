@@ -69,6 +69,19 @@ def main():
         print(f"filter: {fi['type']}")
         print(f"alpha={fi['alpha']:.4f} beta={fi['beta']:.5f}" + (f"gamma={fi['gamma']:.6f}" if fi["gamma"] else ""))
 
+    x_filt_c, _ =run_filter(y_clean, finfo_c)
+    x_filt_n, _ =run_filter(y_interp2, finfo_n)
+
+    for tag, y_src, xf, fi in [("clean", y_clean, x_filt_c, finfo_c), ("noisy/cleaned", y_interp2, x_filt_n, finfo_n)]:
+        rms_f = rmse(trend, xf)
+        rms_in = rmse(trend, y_src)
+        print(f"[{tag}] {fi['type']}:")
+        print(f"RMSE_in: {rms_in:.4f}")
+        print(f"RMSE_filter: {rms_f:.4f}")
+        print(f"Improvement: {(1 - rms_f / rms_in) * 100:.2f}%")
+
+        div = np.max(np.abs(xf - y_src))
+        print(f"Max div: {div:.4f} ({'no div' if div < 5*np.std(y_clean) else "div"})")
 
 
     # orig vs anom plot
@@ -295,6 +308,19 @@ def choose_filter(y_interp: np.ndarray, t: np.ndarray):
     alpha, beta, gamma = optimize_abg_params(y_interp, use_gamma=use_gamma)
     info = dict(type=ftype, alpha=alpha, beta=beta, gamma=gamma, speed=speed, accel=accel, threshold=threshold)
     return ftype, info
+
+
+def run_filter(y: np.ndarray, finfo: dict):
+    alpha, beta, gamma = finfo["alpha"], finfo["beta"], finfo["gamma"]
+
+    if finfo["type"] == "alpha-beta-gamma":
+        x_filt, v_filt, a_filt = alpha_beta_gamma_filter(y, alpha, beta, gamma)
+        extra = dict(v=v_filt, a=a_filt)
+    else:
+        x_filt, v_filt = alpha_beta_filter(y, alpha, beta)
+        extra = dict(v=v_filt)
+
+    return x_filt, extra
 
 
 def print_quality_table(results: list[dict], best_deg: int):

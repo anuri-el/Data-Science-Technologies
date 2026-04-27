@@ -10,7 +10,7 @@ import os
 def main():
     CURRENCIES = ["USD", "EUR", "GBP"]
     DAYS_BACK = 365
-    CSV_PATH = "outputs/nbu_exchange_rates_1y.csv"
+    CSV_PATH = "outputs/l1_nbu_exchange_rates_1y.csv"
     COLORS = {"USD": "#2196F3", "EUR": "#4CAF50", "GBP": "#FF9800"}
 
     # df = parse_nbu_data(currencies=CURRENCIES, days_back=DAYS_BACK)
@@ -66,12 +66,12 @@ def main():
         print(f"    Домінуючий тренд: {best_name} (r2={best_r2:.4f}), напрямок: {direction}")
 
     print()
-    plot_currency_trends(df, trends, "outputs/currency_trends.png", CURRENCIES, COLORS)
-    plot_residual_analysis(df, "outputs/residual_analysis.png", trends, CURRENCIES, COLORS)
-    plot_real_vs_synthetic_series(df, synthetics, "outputs/real_vs_synthetic_series.png", CURRENCIES, COLORS)
-    plot_raw_value_distributions(df, synthetics, "outputs/raw_distributions.png", CURRENCIES, COLORS)
-    plot_residual_distributions(df, trends, synthetics, "outputs/residual_distributions.png", CURRENCIES, COLORS)
-    plot_qq_normality_check(df, trends, "outputs/qq_normality_check.png", CURRENCIES, COLORS)
+    plot_currency_trends(df, trends, "outputs/l1_currency_trends.png", CURRENCIES, COLORS)
+    plot_residual_analysis(df, "outputs/l1_residual_analysis.png", trends, CURRENCIES, COLORS)
+    plot_real_vs_synthetic_series(df, synthetics, "outputs/l1_real_vs_synthetic_series.png", CURRENCIES, COLORS)
+    plot_raw_value_distributions(df, synthetics, "outputs/l1_raw_distributions.png", CURRENCIES, COLORS)
+    plot_residual_distributions(df, trends, synthetics, "outputs/l1_residual_distributions.png", CURRENCIES, COLORS)
+    plot_qq_normality_check(df, trends, "outputs/l1_qq_normality_check.png", CURRENCIES, COLORS)
 
 
 def fetch_nbu_rate(currency: str, date: datetime):

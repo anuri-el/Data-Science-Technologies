@@ -1,5 +1,6 @@
 import numpy as np
 import matplotlib.pyplot as plt
+from scipy.stats import rankdata
 
 
 BANKS = [
@@ -41,6 +42,8 @@ RAW_DATA = np.array([
     [14.9,  72,  19_200,  422_400,  15,   6,   1,   0,   8,   100],  # OTP Bank
 ], dtype=float)
 
+DIRECTIONS = np.array([-1, +1, -1, -1, -1, -1, -1, -1, +1, -1])
+
 AHP_MATRIX = np.array([
     # C1    C2    C3    C4    C5    C6    C7    C8    C9    C10
     [1,    3,    1/2,  1/3,  2,    5,    7,    5,    1/2,  3  ],  # C1 interest rate
@@ -79,6 +82,8 @@ C = dict(
 
 BANK_COLORS = [C["b1"], C["b2"], C["b3"], C["b4"], C["b5"], C["b6"], C["b7"], C["b8"]]
 
+SEP = "=" * 67
+
 def main():
     CAR_PRICE = 1_200_000
     LOAN_AMOUNT = 960_000
@@ -91,6 +96,7 @@ def main():
         mp = monthly_payment(RAW_DATA[i, 0], int(RAW_DATA[i, 1]), LOAN_AMOUNT)
         print(f"{bank:<11}: {mp:>8,.0f} UAH/month (raw: {RAW_DATA[i,2]:>8,.0f} UAH/month)")
     
+    print(f"\n{SEP}")
     print("AHP")
     weights, lambda_max, cr = ahp_weights(AHP_MATRIX)
     print(f"lambda_max = {lambda_max:.4f} | CR = {cr:.4f} {"OK (CR < 0.1)" if cr < 0.1 else "! CR >= 0.1"}")
@@ -98,9 +104,32 @@ def main():
     for name, w in zip(CRITERIA_NAMES, weights):
         bar = "=" * int(w * 100)
         print(f"{name:<25} {w:>8.4f} {w*100:>5.1f} {bar}")
-    
-    plot_ahp_weights(weights, cr, "./outputs/l3_ahp_weights.png")
 
+    norm_mm = normilize_minmax(RAW_DATA, DIRECTIONS)
+    
+    print(f"\n{SEP}")
+    print("Weighted Sum Model")
+    scores_wsm = wsm(norm_mm, weights)
+    rank_wsm = rankdata(-scores_wsm).astype(int)
+    print(f"{'Bank':<15} {'WSM Score':>10} {'Rank':>5}")
+    for i in np.argsort(-scores_wsm):
+        marker = "BEST" if rank_wsm[i] == 1 else ""
+        print(f"{BANKS[i]:<15} {scores_wsm[i]:>10.5f} {rank_wsm[i]:>5} {marker}")
+
+    print(f"\n{SEP}")
+    print("Weighted Product Model")
+    scores_wpm = wpm(norm_mm, weights)
+    rank_wpm = rankdata(-scores_wpm).astype(int)
+    print(f"{'Bank':<15} {'WPM Score':>10} {'Rank':>5}")
+    for i in np.argsort(-scores_wpm):
+        marker = "BEST" if rank_wpm[i] == 1 else ""
+        print(f"{BANKS[i]:<15} {scores_wpm[i]:>10.5f} {rank_wpm[i]:>5} {marker}")
+    
+    print(f"\n{SEP}")
+    plot_ahp_weights(weights, cr, "./outputs/l3_ahp_weights.png")
+    plot_normilized_matrix(norm_mm, "./outputs/l3_normilized_matrix.png")
+    plot_wsm_scores(scores_wsm, "./outputs/l3_wsm_scores.png")
+    plot_wpm_scores(scores_wpm, "./outputs/l3_wpm_scores.png")
 
 def monthly_payment(rate_annual_pct, months, principal):
     r = rate_annual_pct / 100 / 12
@@ -122,6 +151,29 @@ def ahp_weights(matrix: np.ndarray):
     ri = RI_TABLE.get(n, 1.49)
     cr = ci / ri if ri > 0 else 0
     return weights, lambda_max, cr
+
+
+def normilize_minmax(data: np.ndarray, directions:np.ndarray):
+    norm = np.zeros_like(data)
+    for j in range(data.shape[1]):
+        col    = data[:, j]
+        mn, mx = col.min(), col.max()
+        if mx == mn:
+            norm[:, j] = 1.0
+        elif directions[j] == +1:
+            norm[:, j] = (col - mn) / (mx - mn)
+        else:
+            norm[:, j] = (mx - col) / (mx - mn)
+    return norm
+
+
+def wsm(norm_matrix:np.ndarray, weights: np.ndarray):
+    return norm_matrix @ weights
+
+
+def wpm(norm_matrix: np.ndarray, weights: np.ndarray):
+    safe = np.where(norm_matrix <= 0, 1e-9, norm_matrix)
+    return np.prod(safe ** weights, axis=1)
 
 
 def ax_style(ax, title=""):
@@ -152,6 +204,83 @@ def plot_ahp_weights(weights, cr, output_path):
     ax.set_xlabel("Criteria", color=C["subtext"], fontsize=10)
     ax.set_ylabel("Weight, %", color=C["subtext"], fontsize=10)
     ax.legend(fontsize=7.5, facecolor=C["panel"], edgecolor=C["grid"], labelcolor=C["text"], loc="upper left")
+
+    plt.tight_layout()
+    plt.savefig(output_path)
+    plt.show()
+    print(f"'{title}' saved to: {output_path}")
+
+
+def plot_normilized_matrix(norm_mm, output_path):
+    fig, ax = plt.subplots(figsize=(12, 8), facecolor=C["bg"])
+    
+    im = ax.imshow(norm_mm.T, cmap="RdYlGn", aspect="auto", vmin=0, vmax=1)
+    ax.set_xticks(range(N_BANKS))
+    ax.set_xticklabels(BANKS, fontsize=7, color=C["text"])
+    ax.set_yticks(range(N_CRITERIA))
+    ax.set_yticklabels(CRITERIA_NAMES, fontsize=7, color=C["text"])
+
+    for i in range(N_BANKS):
+        for j in range(N_CRITERIA):
+            ax.text(i, j, f"{norm_mm[i,j]:.2f}", ha="center", va="center", fontsize=6, color="black" if norm_mm[i,j] > 0.4 else "white")
+    
+    plt.colorbar(im, ax=ax, fraction=0.04)
+
+    title = f"Min-Max Normilized Matrix"
+    ax_style(ax, title)
+    ax.grid(alpha=0.0)
+
+    plt.tight_layout()
+    plt.savefig(output_path)
+    plt.show()
+    print(f"'{title}' saved to: {output_path}")
+
+
+def plot_wsm_scores(scores_wsm, output_path):
+    fig, ax = plt.subplots(figsize=(14, 8), facecolor=C["bg"])
+    
+    idx_s = np.argsort(-scores_wsm)
+    clr = [C["best"] if r == 0 else C["accent"] if r == 1 else C["worst"] if r == N_BANKS-1 else C["b1"] for r in range(N_BANKS)]
+    bars = ax.barh([BANKS[i] for i in idx_s], [scores_wsm[i] for i in idx_s], color=[clr[r] for r in range(N_BANKS)], alpha=0.85, edgecolor=C["grid"])
+
+    for bar, val in zip(bars, [scores_wsm[i] for i in idx_s]):
+        ax.text(val + 0.003, bar.get_y() + bar.get_height()/2, f"{val:.4f}", va="center", color=C["text"], fontsize=7.5)
+
+    ax.tick_params(colors=C["subtext"], labelsize=8)
+    for sp in ax.spines.values():
+        sp.set_edgecolor(C["grid"])
+    ax.grid(alpha=0.18, color=C["grid"], ls="--", lw=0.6)
+
+    title = f"WSM"
+    ax_style(ax, title)
+    ax.set_xlabel("WSM Score", color=C["subtext"], fontsize=8)
+    ax.invert_yaxis()
+
+    plt.tight_layout()
+    plt.savefig(output_path)
+    plt.show()
+    print(f"'{title}' saved to: {output_path}")
+
+
+def plot_wpm_scores(scores_wpm, output_path):
+    fig, ax = plt.subplots(figsize=(14, 8), facecolor=C["bg"])
+    
+    idx_w = np.argsort(-scores_wpm)
+
+    bars = ax.barh([BANKS[i] for i in idx_w], [scores_wpm[i] for i in idx_w], color=BANK_COLORS, alpha=0.85, edgecolor=C["grid"])
+
+    for bar, val in zip(bars, [scores_wpm[i] for i in idx_w]):
+        ax.text(val + 0.003, bar.get_y() + bar.get_height()/2, f"{val:.4f}", va="center", color=C["text"], fontsize=7.5)
+
+    ax.tick_params(colors=C["subtext"], labelsize=8)
+    for sp in ax.spines.values():
+        sp.set_edgecolor(C["grid"])
+    ax.grid(alpha=0.18, color=C["grid"], ls="--", lw=0.6)
+
+    title = f"WPM Score"
+    ax_style(ax, title)
+    ax.set_xlabel("WPM score", color=C["subtext"], fontsize=8)
+    ax.invert_yaxis()
 
     plt.tight_layout()
     plt.savefig(output_path)

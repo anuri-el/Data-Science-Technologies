@@ -126,10 +126,24 @@ def main():
         print(f"{BANKS[i]:<15} {scores_wpm[i]:>10.5f} {rank_wpm[i]:>5} {marker}")
     
     print(f"\n{SEP}")
-    plot_ahp_weights(weights, cr, "./outputs/l3_ahp_weights.png")
-    plot_normilized_matrix(norm_mm, "./outputs/l3_normilized_matrix.png")
-    plot_wsm_scores(scores_wsm, "./outputs/l3_wsm_scores.png")
-    plot_wpm_scores(scores_wpm, "./outputs/l3_wpm_scores.png")
+    print("TOPSIS")
+    scores_topsis, d_plus, d_minus = topsis(RAW_DATA, weights, DIRECTIONS)
+    rank_topsis = rankdata(-scores_topsis).astype(int)
+    print(f"{'Bank':<15} {'D+':>8} {'D-':>8} {'C*':>8} {'Rank':>5}")
+    for i in np.argsort(-scores_topsis):
+        marker = "BEST" if rank_topsis[i] == 1 else ""
+        print(f"{BANKS[i]:<15} {d_plus[i]:>8.4f} {d_minus[i]:>8.4f} {scores_topsis[i]:>8.4f} {rank_topsis[i]:>5} {marker}")
+    
+
+
+    print(f"\n{SEP}")
+    # plot_ahp_weights(weights, cr, "./outputs/l3_ahp_weights.png")
+    # plot_normilized_matrix(norm_mm, "./outputs/l3_normilized_matrix.png")
+    # plot_wsm_scores(scores_wsm, "./outputs/l3_wsm_scores.png")
+    # plot_wpm_scores(scores_wpm, "./outputs/l3_wpm_scores.png")
+    plot_topsis_distances(d_plus, d_minus, "./outputs/l3_topsis_distances.png")
+    plot_topsis_scores(scores_topsis, "./outputs/l3_topsis_scores.png")
+
 
 def monthly_payment(rate_annual_pct, months, principal):
     r = rate_annual_pct / 100 / 12
@@ -166,6 +180,11 @@ def normilize_minmax(data: np.ndarray, directions:np.ndarray):
             norm[:, j] = (mx - col) / (mx - mn)
     return norm
 
+def normilize_vector(data: np.ndarray):
+    denom = np.sqrt((data) ** 2).sum(axis=0)
+    denom[denom == 0] = 1e-12
+    return data / denom
+
 
 def wsm(norm_matrix:np.ndarray, weights: np.ndarray):
     return norm_matrix @ weights
@@ -174,6 +193,20 @@ def wsm(norm_matrix:np.ndarray, weights: np.ndarray):
 def wpm(norm_matrix: np.ndarray, weights: np.ndarray):
     safe = np.where(norm_matrix <= 0, 1e-9, norm_matrix)
     return np.prod(safe ** weights, axis=1)
+
+
+def topsis(data: np.ndarray, weights: np.ndarray, directions: np.ndarray):
+    norm = normilize_vector(data)
+    v = norm * weights
+
+    ideal = np.where(directions == +1, v.max(axis=0), v.min(axis=0))
+    anti_ideal = np.where(directions == +1, v.min(axis=0), v.max(axis=0))
+
+    d_plus =np.sqrt(((v - ideal) ** 2).sum(axis=1))
+    d_minus =np.sqrt(((v - anti_ideal) ** 2).sum(axis=1))
+
+    c_star = d_minus / (d_plus + d_minus + 1e-12)
+    return c_star, d_plus, d_minus
 
 
 def ax_style(ax, title=""):
@@ -280,6 +313,64 @@ def plot_wpm_scores(scores_wpm, output_path):
     title = f"WPM Score"
     ax_style(ax, title)
     ax.set_xlabel("WPM score", color=C["subtext"], fontsize=8)
+    ax.invert_yaxis()
+
+    plt.tight_layout()
+    plt.savefig(output_path)
+    plt.show()
+    print(f"'{title}' saved to: {output_path}")
+
+
+def plot_topsis_distances(d_plus, d_minus, output_path):
+    fig, ax = plt.subplots(figsize=(14, 8), facecolor=C["bg"])
+    
+    x_pos = np.arange(N_BANKS)
+    w_bar = 0.35
+
+    b1 = ax.bar(x_pos - w_bar/2, d_plus, w_bar, color=C["worst"], alpha=0.85, label="D+ (ideal)")
+    b2 = ax.bar(x_pos + w_bar/2, d_minus, w_bar, color=C["best"], alpha=0.85, label="D- (anti-ideal)")
+
+    for b, v in zip(list(b1)+list(b2), list(d_plus)+list(d_minus)):
+        ax.text(b.get_x()+b.get_width()/2, b.get_height()+1e-4, f"{v:.3f}", ha="center", va="bottom", color=C["text"], fontsize=6.5)
+    
+    ax.set_xticks(x_pos)
+    ax.set_xticklabels(BANKS, fontsize=8, color=C["text"])
+    
+    ax.tick_params(colors=C["subtext"], labelsize=8)
+    for sp in ax.spines.values():
+        sp.set_edgecolor(C["grid"])
+    ax.grid(alpha=0.18, color=C["grid"], ls="--", lw=0.6)
+
+    title = f"TOPSIS - distances to ideal/anti-ideal"
+    ax_style(ax, title)
+    ax.set_ylabel("Distance", color=C["subtext"], fontsize=8)
+
+    plt.tight_layout()
+    plt.savefig(output_path)
+    plt.show()
+    print(f"'{title}' saved to: {output_path}")
+
+
+def plot_topsis_scores(scores_topsis, output_path):
+    fig, ax = plt.subplots(figsize=(14, 8), facecolor=C["bg"])
+    
+    idx_t = np.argsort(-scores_topsis)
+
+    bars = ax.barh([BANKS[i] for i in idx_t], [scores_topsis[i] for i in idx_t], color=BANK_COLORS, alpha=0.85, edgecolor=C["grid"])
+
+    ax.axvline(0.5, color=C["gold"], ls="--", lw=1.2, alpha=0.8, label="threshold = 0.5")
+
+    for bar, val in zip(bars, [scores_topsis[i] for i in idx_t]):
+        ax.text(val + 0.003, bar.get_y() + bar.get_height()/2, f"{val:.4f}", va="center", color=C["text"], fontsize=7.5)
+
+    ax.tick_params(colors=C["subtext"], labelsize=8)
+    for sp in ax.spines.values():
+        sp.set_edgecolor(C["grid"])
+    ax.grid(alpha=0.18, color=C["grid"], ls="--", lw=0.6)
+
+    title = f"TOPSIS C*"
+    ax_style(ax, title)
+    ax.set_xlabel("C*", color=C["subtext"], fontsize=8)
     ax.invert_yaxis()
 
     plt.tight_layout()

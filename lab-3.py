@@ -1,4 +1,5 @@
 import numpy as np
+import pandas as pd
 import matplotlib.pyplot as plt
 from scipy.stats import rankdata
 
@@ -134,13 +135,51 @@ def main():
         marker = "BEST" if rank_topsis[i] == 1 else ""
         print(f"{BANKS[i]:<15} {d_plus[i]:>8.4f} {d_minus[i]:>8.4f} {scores_topsis[i]:>8.4f} {rank_topsis[i]:>5} {marker}")
     
-
+    print(f"\n{SEP}")
+    print("TOPSIS +- 20%")
+    sensitivity = sensitivity_analysis(RAW_DATA, weights, DIRECTIONS, topsis)
+    print("Average instability (0=stable):")
+    avg_instab = sensitivity.mean(axis=1)
+    for j, (crit, val) in enumerate(zip(CRITERIA_NAMES, avg_instab)):
+        bar = "=" * int(val * 30)
+        print(f"{crit:<25} {val:.3f} {bar}")
 
     print(f"\n{SEP}")
-    # plot_ahp_weights(weights, cr, "./outputs/l3_ahp_weights.png")
-    # plot_normilized_matrix(norm_mm, "./outputs/l3_normilized_matrix.png")
-    # plot_wsm_scores(scores_wsm, "./outputs/l3_wsm_scores.png")
-    # plot_wpm_scores(scores_wpm, "./outputs/l3_wpm_scores.png")
+    print("BORDA COUNT")
+    score_matrix = np.column_stack([scores_wsm, scores_wpm, scores_topsis])
+    borda = borda_aggregate(score_matrix)
+    rank_borda = rankdata(-borda).astype(int)
+    print(f"{'Bank':<11} {'WSM':>5} {'WPM':>5}" f"{'TOP':>6} {'Borda':>8}")
+    
+    for i in np.argsort(-borda):
+        r = rank_borda[i]
+        print(f"{BANKS[i]:<10} {rank_wsm[i]:>5} {rank_wpm[i]:>5} {rank_topsis[i]:>5}  {borda[i]:>7.0f}")
+    
+    winner = BANKS[np.argmax(borda)]
+    print(f"Winner: {winner}")
+
+
+    df = pd.DataFrame({
+        "Bank": BANKS,
+        **{f"C{j+1}_{CRITERIA_NAMES[j].split(',')[0]}": RAW_DATA[:, j]
+           for j in range(N_CRITERIA)},
+        "Norm_WSM": scores_wsm,
+        "Rank_WSM": rank_wsm,
+        "Norm_WPM": scores_wpm,
+        "Rank_WPM": rank_wpm,
+        "TOPSIS_C*": scores_topsis,
+        "Rank_TOPSIS": rank_topsis,
+        "Borda": borda,
+        "Rank_Borda": rank_borda,
+    })
+    df.to_csv("./outputs/l3_mcda_results.csv", index=False)
+    print(f"CSV saved to: ./outputs/l3_mcda_results.csv")
+
+    print(f"\n{SEP}")
+    plot_ahp_weights(weights, cr, "./outputs/l3_ahp_weights.png")
+    plot_normilized_matrix(norm_mm, "./outputs/l3_normilized_matrix.png")
+    plot_wsm_scores(scores_wsm, "./outputs/l3_wsm_scores.png")
+    plot_wpm_scores(scores_wpm, "./outputs/l3_wpm_scores.png")
     plot_topsis_distances(d_plus, d_minus, "./outputs/l3_topsis_distances.png")
     plot_topsis_scores(scores_topsis, "./outputs/l3_topsis_scores.png")
 
@@ -207,6 +246,32 @@ def topsis(data: np.ndarray, weights: np.ndarray, directions: np.ndarray):
 
     c_star = d_minus / (d_plus + d_minus + 1e-12)
     return c_star, d_plus, d_minus
+
+
+def sensitivity_analysis(data, weights, directions, method_fn, perturbation=0.2):
+    base_scores, _, _ = method_fn(data, weights, directions)
+    base_rank = rankdata(-base_scores)
+    changes   = np.zeros((N_CRITERIA, N_BANKS))
+ 
+    for j in range(N_CRITERIA):
+        for sign in (+1, -1):
+            w_new      = weights.copy()
+            w_new[j]  *= (1 + sign * perturbation)
+            w_new     /= w_new.sum()
+            new_scores, _, _ = method_fn(data, w_new, directions)
+            new_rank   = rankdata(-new_scores)
+            changes[j] += (new_rank != base_rank).astype(float)
+ 
+    return changes / 2
+
+
+def borda_aggregate(score_matrix: np.ndarray) -> np.ndarray:
+    n_alt, n_methods = score_matrix.shape
+    borda = np.zeros(n_alt)
+    for m in range(n_methods):
+        ranks = rankdata(-score_matrix[:, m])
+        borda += (n_alt - ranks)
+    return borda
 
 
 def ax_style(ax, title=""):
@@ -284,7 +349,7 @@ def plot_wsm_scores(scores_wsm, output_path):
         sp.set_edgecolor(C["grid"])
     ax.grid(alpha=0.18, color=C["grid"], ls="--", lw=0.6)
 
-    title = f"WSM"
+    title = f"Weighted Sum Model"
     ax_style(ax, title)
     ax.set_xlabel("WSM Score", color=C["subtext"], fontsize=8)
     ax.invert_yaxis()
@@ -310,7 +375,7 @@ def plot_wpm_scores(scores_wpm, output_path):
         sp.set_edgecolor(C["grid"])
     ax.grid(alpha=0.18, color=C["grid"], ls="--", lw=0.6)
 
-    title = f"WPM Score"
+    title = f"Weighted Product Model"
     ax_style(ax, title)
     ax.set_xlabel("WPM score", color=C["subtext"], fontsize=8)
     ax.invert_yaxis()

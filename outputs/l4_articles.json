@@ -1,409 +1,45 @@
 [
   {
     "id": 0,
-    "source_id": "ukrinform",
-    "source_name": "Ukrinform",
-    "title": "УПЛ. «Металіст 1925» поступився «Поліссю» у Житомирі",
-    "body": "У чемпіонаті України з футболу серед команд Премʼєр-ліги (УПЛ) завершився черговий поєдинкок 26-го туру національної першості.",
-    "category": "Sports",
-    "sentiment": "neutral",
-    "published": "2026-05-03T15:05:46+00:00",
+    "source_id": "bbc",
+    "source_name": "BBC News",
+    "title": "Iran says US has responded to its latest peace proposal",
+    "body": "The US is yet to formally confirm it has responded. However, Trump reportedly told Israel's Kan News it was unacceptable.",
+    "category": "Culture",
+    "sentiment": "positive",
+    "published": "2026-05-03T19:24:02+00:00",
     "day": "2026-05-03",
-    "hour": 15,
+    "hour": 19,
     "week_day": "Sunday"
   },
   {
     "id": 1,
-    "source_id": "ukrinform",
-    "source_name": "Ukrinform",
-    "title": "В Австрії під багаттям вибухнув «військовий артефакт», постраждали діти",
-    "body": "На півночі Австрії вибухнув «військовий артефакт», що знаходився під багаттям, довкола якого в суботу ввечері зібралися юні туристи в таборі. П’ятеро дітей були госпіталізовані.",
-    "category": "Economy",
+    "source_id": "bbc",
+    "source_name": "BBC News",
+    "title": "The Iran war has strengthened Ukraine in surprising ways. Could a ceasefire with Russia be closer?",
+    "body": "President Zelensky has been visiting the Gulf to demonstrate his country's military nous.",
+    "category": "Culture",
     "sentiment": "neutral",
-    "published": "2026-05-03T15:00:00+00:00",
-    "day": "2026-05-03",
-    "hour": 15,
-    "week_day": "Sunday"
+    "published": "2026-05-02T23:19:27+00:00",
+    "day": "2026-05-02",
+    "hour": 23,
+    "week_day": "Saturday"
   },
   {
     "id": 2,
-    "source_id": "ukrinform",
-    "source_name": "Ukrinform",
-    "title": "Театр Франка представить прем’єру вистави «Там, де заходить сонце»",
-    "body": "У Києві у Національному академічному драматичному театрі імені Івана Франка 13–14 травня відбудеться прем’єра вистави «Там, де заходить сонце» у постановці режисера Тараса Жирка за однойменним романом української письменниці Олени Пшеничної.",
-    "category": "Culture",
-    "sentiment": "neutral",
-    "published": "2026-05-03T14:45:00+00:00",
+    "source_id": "bbc",
+    "source_name": "BBC News",
+    "title": "Three dead in suspected virus outbreak on Atlantic cruise ship",
+    "body": "The World Health Organization said one case of hantavirus infection has been confirmed, with five more suspected cases under investigation.",
+    "category": "Society",
+    "sentiment": "negative",
+    "published": "2026-05-03T19:09:02+00:00",
     "day": "2026-05-03",
-    "hour": 14,
+    "hour": 19,
     "week_day": "Sunday"
   },
   {
     "id": 3,
-    "source_id": "ukrinform",
-    "source_name": "Ukrinform",
-    "title": "Російська армія атакувала Запоріжжя, є поранені",
-    "body": "Ворожа армія атакувала Запоріжжя. В місті чути вибухи. Відомо про влучання по гаражах. Є поранені.",
-    "category": "War/Security",
-    "sentiment": "neutral",
-    "published": "2026-05-03T14:43:00+00:00",
-    "day": "2026-05-03",
-    "hour": 14,
-    "week_day": "Sunday"
-  },
-  {
-    "id": 4,
-    "source_id": "ukrinform",
-    "source_name": "Ukrinform",
-    "title": "Удар по Дніпру: одна людина загинула, кількість поранених зросла до 11",
-    "body": "Армія РФ у неділю атакувала Дніпро. Відомо про одну загиблу людину та 11 травмованих.",
-    "category": "War/Security",
-    "sentiment": "neutral",
-    "published": "2026-05-03T14:36:28+00:00",
-    "day": "2026-05-03",
-    "hour": 14,
-    "week_day": "Sunday"
-  },
-  {
-    "id": 5,
-    "source_id": "ukrinform",
-    "source_name": "Ukrinform",
-    "title": "Продажі нових легковиків у квітні зросли на 3% - Укравтопром",
-    "body": "В Україні у квітні 2026 року зареєстровано близько 6,2 тис. нових легковиків, на 3% більше, ніж у квітні минулого року.",
-    "category": "Culture",
-    "sentiment": "neutral",
-    "published": "2026-05-03T14:25:00+00:00",
-    "day": "2026-05-03",
-    "hour": 14,
-    "week_day": "Sunday"
-  },
-  {
-    "id": 6,
-    "source_id": "ukrinform",
-    "source_name": "Ukrinform",
-    "title": "Синоптик розповіла, якою буде погода в Україні наступного тижня",
-    "body": "В Україні з понеділка спостерігатиметься суха і тепла погода, місяцями до +27 градусів, у другій половині тижня ймовірні дощі з грозами у західних регіонах.",
-    "category": "Technology",
-    "sentiment": "neutral",
-    "published": "2026-05-03T14:17:00+00:00",
-    "day": "2026-05-03",
-    "hour": 14,
-    "week_day": "Sunday"
-  },
-  {
-    "id": 7,
-    "source_id": "ukrinform",
-    "source_name": "Ukrinform",
-    "title": "У Чехії відкрили виставку української художниці Оксани Заєць",
-    "body": "У місті Хеб у західній Чехії в неділю відкрилася виставка української художниці та поетеси з Рівненщини Оксани Заєць \"Ніжне світло\".",
-    "category": "Culture",
-    "sentiment": "neutral",
-    "published": "2026-05-03T14:15:39+00:00",
-    "day": "2026-05-03",
-    "hour": 14,
-    "week_day": "Sunday"
-  },
-  {
-    "id": 8,
-    "source_id": "ukrinform",
-    "source_name": "Ukrinform",
-    "title": "Війська РФ від початку доби здійснили 45 атак, два напрямки найгарячіші",
-    "body": "Російська армія від початку доби 45 разів атакувала позиції Сил оборони України. Основні зусилля ворог зосереджує на Покровському та Костянтинівському напрямках.",
-    "category": "War/Security",
-    "sentiment": "neutral",
-    "published": "2026-05-03T13:50:00+00:00",
-    "day": "2026-05-03",
-    "hour": 13,
-    "week_day": "Sunday"
-  },
-  {
-    "id": 9,
-    "source_id": "ukrinform",
-    "source_name": "Ukrinform",
-    "title": "Буданов подякував медіа, які працюють чесно й дотримуються професійних стандартів",
-    "body": "Керівник Офісу Президента України Кирило Буданов у Всесвітній день свободи преси подякував ЗМІ, які працюють чесно, відповідально й дотримуються професійних стандартів.",
-    "category": "Politics",
-    "sentiment": "neutral",
-    "published": "2026-05-03T13:39:00+00:00",
-    "day": "2026-05-03",
-    "hour": 13,
-    "week_day": "Sunday"
-  },
-  {
-    "id": 10,
-    "source_id": "ukrinform",
-    "source_name": "Ukrinform",
-    "title": "Сили безпілотних систем у квітні уразили 38 ворожих засобів ППО",
-    "body": "Сили безпілотних систем Збройних сил України впродовж квітня уразили 38 засобів протиповітряної оборони російських загарбників.",
-    "category": "War/Security",
-    "sentiment": "neutral",
-    "published": "2026-05-03T13:33:00+00:00",
-    "day": "2026-05-03",
-    "hour": 13,
-    "week_day": "Sunday"
-  },
-  {
-    "id": 11,
-    "source_id": "ukrinform",
-    "source_name": "Ukrinform",
-    "title": "Українець Єршов став призером етапу серії Grand Slam із дзюдо у Таджикистані",
-    "body": "У Душанбе (Таджикистан) пройшов черговий турнір із дзюдо сезону-2026 серії Grand Slam.",
-    "category": "Culture",
-    "sentiment": "positive",
-    "published": "2026-05-03T13:19:07+00:00",
-    "day": "2026-05-03",
-    "hour": 13,
-    "week_day": "Sunday"
-  },
-  {
-    "id": 12,
-    "source_id": "ukrinform",
-    "source_name": "Ukrinform",
-    "title": "Ворог вдарив по житловому кварталу у Дніпрі - пошкоджений гуртожиток, є поранені",
-    "body": "Унаслідок російської атаки вдень 3 травня у Дніпрі пошкоджена будівля гуртожитку.",
-    "category": "War/Security",
-    "sentiment": "neutral",
-    "published": "2026-05-03T13:12:00+00:00",
-    "day": "2026-05-03",
-    "hour": 13,
-    "week_day": "Sunday"
-  },
-  {
-    "id": 13,
-    "source_id": "ukrinform",
-    "source_name": "Ukrinform",
-    "title": "Зеленський прибув до Єревана",
-    "body": "Володимир Зеленський прибув до столиці Вірменії для участі у саміті Європейської політичної спільноти.",
-    "category": "Technology",
-    "sentiment": "neutral",
-    "published": "2026-05-03T13:00:00+00:00",
-    "day": "2026-05-03",
-    "hour": 13,
-    "week_day": "Sunday"
-  },
-  {
-    "id": 14,
-    "source_id": "ukrinform",
-    "source_name": "Ukrinform",
-    "title": "ОПЕК+ після виходу Об'єднаних Арабських Еміратів збільшить квоти на видобуток нафти",
-    "body": "ОПЕК+ у неділю, після виходу з її складу ОАЕ, погодилася на незначне збільшення видобутку нафти на червень, що стало третім підвищення квот з моменту закриття Ормузької протоки і залишиться переважно на папері, поки війна з Іраном продовжуватиме порушувати постачання нафти з Перської затоки.",
-    "category": "Technology",
-    "sentiment": "neutral",
-    "published": "2026-05-03T12:48:00+00:00",
-    "day": "2026-05-03",
-    "hour": 12,
-    "week_day": "Sunday"
-  },
-  {
-    "id": 15,
-    "source_id": "ukrinform",
-    "source_name": "Ukrinform",
-    "title": "Українці Ігнатенко та Кухаревич зі \"Слованом\" виграли чемпіонат Словаччини з футболу",
-    "body": "Українські футболісти Данило Ігнатенко та Микола Кухаревич зі \"Слованом\" достроково стали чемпіонами Словаччини сезону-2025/26.",
-    "category": "Sports",
-    "sentiment": "neutral",
-    "published": "2026-05-03T12:38:38+00:00",
-    "day": "2026-05-03",
-    "hour": 12,
-    "week_day": "Sunday"
-  },
-  {
-    "id": 16,
-    "source_id": "ukrinform",
-    "source_name": "Ukrinform",
-    "title": "Укрзалізниця випустила в рейс перший дитячий вагон у складі поїзда Харків - Івано-Франківськ",
-    "body": "У суботу, 2 травня, у перший рейс вирушив дитячий вагон у складі поїзда №001/002 «Єдність», який з’єднує схід України із заходом.",
-    "category": "War/Security",
-    "sentiment": "neutral",
-    "published": "2026-05-03T12:26:00+00:00",
-    "day": "2026-05-03",
-    "hour": 12,
-    "week_day": "Sunday"
-  },
-  {
-    "id": 17,
-    "source_id": "ukrinform",
-    "source_name": "Ukrinform",
-    "title": "У Нікопольському районі через російські удари постраждали п’ятеро людей",
-    "body": "На Нікопольщині внаслідок російських ударів постраждали п’ятеро людей, на місцях працюють правоохоронці.",
-    "category": "Society",
-    "sentiment": "neutral",
-    "published": "2026-05-03T12:04:00+00:00",
-    "day": "2026-05-03",
-    "hour": 12,
-    "week_day": "Sunday"
-  },
-  {
-    "id": 18,
-    "source_id": "ukrinform",
-    "source_name": "Ukrinform",
-    "title": "УПЛ. «Оболонь» не втримала перемогу над «Кудрівкою» у 26-му турі",
-    "body": "У чемпіонаті України з футболу серед команд Премʼєр-ліги (УПЛ) пройшов черговий поєдинкок 26-го туру національної першості.",
-    "category": "Sports",
-    "sentiment": "neutral",
-    "published": "2026-05-03T12:03:00+00:00",
-    "day": "2026-05-03",
-    "hour": 12,
-    "week_day": "Sunday"
-  },
-  {
-    "id": 19,
-    "source_id": "ukrinform",
-    "source_name": "Ukrinform",
-    "title": "У Кривому Розі через влучання «Шахеда» в будинок постраждали п’ятеро людей",
-    "body": "Російський влучив в під’їзд багатоповерхівки у Кривому Розі. П’ятеро людей доставлені до лікарні.",
-    "category": "Economy",
-    "sentiment": "neutral",
-    "published": "2026-05-03T11:58:00+00:00",
-    "day": "2026-05-03",
-    "hour": 11,
-    "week_day": "Sunday"
-  },
-  {
-    "id": 20,
-    "source_id": "ukrinform",
-    "source_name": "Ukrinform",
-    "title": "МЗС Франції: Росія зробила свободу інформування своєю мішенню",
-    "body": "Франція у Всесвітній день свободи преси, який відзначають 3 травня, вшанувала пам’ять французького фотожурналіста Антоні Лаллікана, який загинув в Україні внаслідок удару російського дрона, та заявила, що Росія зробила свободу інформування своєю мішенню.",
-    "category": "Technology",
-    "sentiment": "neutral",
-    "published": "2026-05-03T11:38:00+00:00",
-    "day": "2026-05-03",
-    "hour": 11,
-    "week_day": "Sunday"
-  },
-  {
-    "id": 21,
-    "source_id": "ukrinform",
-    "source_name": "Ukrinform",
-    "title": "На Київщині сталася масова бійка: поліція встановлює обставини",
-    "body": "Правоохоронці встановлюють обставини бійки між підлітками та чоловіками, яка сталася у Святопетрівському Київської області увечері у суботу, 2 травня.",
-    "category": "War/Security",
-    "sentiment": "neutral",
-    "published": "2026-05-03T11:33:00+00:00",
-    "day": "2026-05-03",
-    "hour": 11,
-    "week_day": "Sunday"
-  },
-  {
-    "id": 22,
-    "source_id": "ukrinform",
-    "source_name": "Ukrinform",
-    "title": "У НБУ розповіли, як змінилися касові обороти банків у І кварталі",
-    "body": "За перший квартал 2026 року в Україні зросли касові обороти банків: надходження готівки - на 5,2% порівняно з січнем - березнем торік, видача - на 6,3%.",
-    "category": "Culture",
-    "sentiment": "neutral",
-    "published": "2026-05-03T11:32:12+00:00",
-    "day": "2026-05-03",
-    "hour": 11,
-    "week_day": "Sunday"
-  },
-  {
-    "id": 23,
-    "source_id": "ukrinform",
-    "source_name": "Ukrinform",
-    "title": "Білий дім виклав відео, як Рубіо «працює» діджеєм на весіллі",
-    "body": "Державний секретар США Марко Рубіо на цих вихідних виступив у ролі діджея, зігравши сет на сімейному весіллі.",
-    "category": "Technology",
-    "sentiment": "neutral",
-    "published": "2026-05-03T11:18:00+00:00",
-    "day": "2026-05-03",
-    "hour": 11,
-    "week_day": "Sunday"
-  },
-  {
-    "id": 24,
-    "source_id": "ukrinform",
-    "source_name": "Ukrinform",
-    "title": "Сили оборони уразили у Приморську російський носій «Калібрів» - корабель «Каракурт»",
-    "body": "Виконувач обов'язків голови Служби безпеки України генерал-майор Євгеній Хмара доповів Президенту Володимиру Зеленському про успішне ураження ворожих обʼєктів у порту Приморськ.",
-    "category": "War/Security",
-    "sentiment": "neutral",
-    "published": "2026-05-03T11:07:00+00:00",
-    "day": "2026-05-03",
-    "hour": 11,
-    "week_day": "Sunday"
-  },
-  {
-    "id": 25,
-    "source_id": "ukrinform",
-    "source_name": "Ukrinform",
-    "title": "Росіяни атакували Кривий Ріг, є влучання у багатоповерхівку",
-    "body": "Війська РФ атакували Кривий Ріг: є влучання у багатоповерховий будинок, виникла пожежа.",
-    "category": "War/Security",
-    "sentiment": "neutral",
-    "published": "2026-05-03T11:02:00+00:00",
-    "day": "2026-05-03",
-    "hour": 11,
-    "week_day": "Sunday"
-  },
-  {
-    "id": 26,
-    "source_id": "ukrinform",
-    "source_name": "Ukrinform",
-    "title": "В Україні спростили доступ та використання знеболювальних на фронті",
-    "body": "Уряд ухвалив рішення, яке спрощує бойовим медикам використання наркотичних препаратів знеболювального характеру.",
-    "category": "Politics",
-    "sentiment": "neutral",
-    "published": "2026-05-03T10:53:49+00:00",
-    "day": "2026-05-03",
-    "hour": 10,
-    "week_day": "Sunday"
-  },
-  {
-    "id": 27,
-    "source_id": "ukrinform",
-    "source_name": "Ukrinform",
-    "title": "Перемир’я лише для проведення параду на 9 травня у Москві є абсурдом - Туск",
-    "body": "Перемир’я на один день, 9 травня, яке пропонує Росія, є «абсурдом», і Польща не є прихильником згоди на таку пропозицію.",
-    "category": "Technology",
-    "sentiment": "neutral",
-    "published": "2026-05-03T10:45:00+00:00",
-    "day": "2026-05-03",
-    "hour": 10,
-    "week_day": "Sunday"
-  },
-  {
-    "id": 28,
-    "source_id": "ukrinform",
-    "source_name": "Ukrinform",
-    "title": "В Україні у понеділок очікується мінлива хмарність без опадів, вдень - до +25°",
-    "body": "Завтра, 4 травня, в Україні прогнозується мінлива хмарність, без опадів, лише на південному сході країни вдень дощ.",
-    "category": "War/Security",
-    "sentiment": "neutral",
-    "published": "2026-05-03T10:30:00+00:00",
-    "day": "2026-05-03",
-    "hour": 10,
-    "week_day": "Sunday"
-  },
-  {
-    "id": 29,
-    "source_id": "ukrinform",
-    "source_name": "Ukrinform",
-    "title": "Метеорний потік Ета-Аквариди досягне піку в ніч проти 6 травня",
-    "body": "У ніч проти 6 травня очікується видовищне астрономічне явище – пік активності зорепаду Ета-Аквариди.",
-    "category": "Culture",
-    "sentiment": "neutral",
-    "published": "2026-05-03T10:10:00+00:00",
-    "day": "2026-05-03",
-    "hour": 10,
-    "week_day": "Sunday"
-  },
-  {
-    "id": 0,
-    "source_id": "bbc",
-    "source_name": "BBC News",
-    "title": "Germany troop cuts send wrong signal to Russia, say two top US Republicans",
-    "body": "The chairs of the House and Senate armed services committees said withdrawing 5,000 service personnel risked undermining deterrence.",
-    "category": "Politics",
-    "sentiment": "negative",
-    "published": "2026-05-03T08:41:23+00:00",
-    "day": "2026-05-03",
-    "hour": 8,
-    "week_day": "Sunday"
-  },
-  {
-    "id": 1,
     "source_id": "bbc",
     "source_name": "BBC News",
     "title": "Russian strikes kill 10 as Zelensky says Ukraine hits oil tankers and terminal",
@@ -416,7 +52,7 @@
     "week_day": "Sunday"
   },
   {
-    "id": 2,
+    "id": 4,
     "source_id": "bbc",
     "source_name": "BBC News",
     "title": "Nigeria summons South African envoy over attacks on its nationals",
@@ -429,43 +65,17 @@
     "week_day": "Sunday"
   },
   {
-    "id": 3,
-    "source_id": "bbc",
-    "source_name": "BBC News",
-    "title": "Two US service members reported missing in Morocco, officials say",
-    "body": "A search and rescue operation is underway for the service members, the US African Command said.",
-    "category": "Culture",
-    "sentiment": "positive",
-    "published": "2026-05-03T14:13:58+00:00",
-    "day": "2026-05-03",
-    "hour": 14,
-    "week_day": "Sunday"
-  },
-  {
-    "id": 4,
-    "source_id": "bbc",
-    "source_name": "BBC News",
-    "title": "Man charged with murder and sexual assault of 5-year-old Australian girl",
-    "body": "The girl's death sparked an outbreak of violence in the central Australian town from where she disappeared.",
-    "category": "Culture",
-    "sentiment": "negative",
-    "published": "2026-05-03T05:52:09+00:00",
-    "day": "2026-05-03",
-    "hour": 5,
-    "week_day": "Sunday"
-  },
-  {
     "id": 5,
     "source_id": "bbc",
     "source_name": "BBC News",
-    "title": "The Iran war has strengthened Ukraine in surprising ways. Could a ceasefire with Russia be closer?",
-    "body": "President Zelensky has been visiting the Gulf to demonstrate his country's military nous.",
-    "category": "Culture",
-    "sentiment": "neutral",
-    "published": "2026-05-02T23:19:27+00:00",
-    "day": "2026-05-02",
-    "hour": 23,
-    "week_day": "Saturday"
+    "title": "Police officer lowered into crocodile-infested river to recover human remains",
+    "body": "Police suspect the human remains belong to a businessman swept away by floodwater last week.",
+    "category": "Society",
+    "sentiment": "negative",
+    "published": "2026-05-03T15:47:59+00:00",
+    "day": "2026-05-03",
+    "hour": 15,
+    "week_day": "Sunday"
   },
   {
     "id": 6,
@@ -484,6 +94,19 @@
     "id": 7,
     "source_id": "bbc",
     "source_name": "BBC News",
+    "title": "Germany troop cuts send wrong signal to Russia, say two top US Republicans",
+    "body": "The chairs of the House and Senate armed services committees said withdrawing 5,000 service personnel risked undermining deterrence.",
+    "category": "Politics",
+    "sentiment": "negative",
+    "published": "2026-05-03T08:41:23+00:00",
+    "day": "2026-05-03",
+    "hour": 8,
+    "week_day": "Sunday"
+  },
+  {
+    "id": 8,
+    "source_id": "bbc",
+    "source_name": "BBC News",
     "title": "Concern for jailed Iranian Nobel laureate as brother fears she is dying",
     "body": "Her family said the 54-year-old had been taken from prison to a local hospital after a sharp deterioration in her health.",
     "category": "Culture",
@@ -494,7 +117,33 @@
     "week_day": "Sunday"
   },
   {
-    "id": 8,
+    "id": 9,
+    "source_id": "bbc",
+    "source_name": "BBC News",
+    "title": "Two US service members reported missing in Morocco, officials say",
+    "body": "A search and rescue operation is underway for the service members, who are believed to have been involved in an accident, according to authorities.",
+    "category": "Society",
+    "sentiment": "negative",
+    "published": "2026-05-03T17:27:21+00:00",
+    "day": "2026-05-03",
+    "hour": 17,
+    "week_day": "Sunday"
+  },
+  {
+    "id": 10,
+    "source_id": "bbc",
+    "source_name": "BBC News",
+    "title": "Man charged with murder and sexual assault of 5-year-old Australian girl",
+    "body": "The girl's death sparked an outbreak of violence in the central Australian town from where she disappeared.",
+    "category": "Culture",
+    "sentiment": "negative",
+    "published": "2026-05-03T05:52:09+00:00",
+    "day": "2026-05-03",
+    "hour": 5,
+    "week_day": "Sunday"
+  },
+  {
+    "id": 11,
     "source_id": "bbc",
     "source_name": "BBC News",
     "title": "'If we sleep, they bite': Rats and weasels infest camps for displaced Gazans",
@@ -507,7 +156,7 @@
     "week_day": "Saturday"
   },
   {
-    "id": 9,
+    "id": 12,
     "source_id": "bbc",
     "source_name": "BBC News",
     "title": "Thirteen killed in Israeli strikes on southern Lebanon, health ministry says",
@@ -520,7 +169,7 @@
     "week_day": "Saturday"
   },
   {
-    "id": 10,
+    "id": 13,
     "source_id": "bbc",
     "source_name": "BBC News",
     "title": "Oil tanker hijacked off coast of Yemen and taken towards Somalia",
@@ -533,7 +182,7 @@
     "week_day": "Saturday"
   },
   {
-    "id": 11,
+    "id": 14,
     "source_id": "bbc",
     "source_name": "BBC News",
     "title": "US Supreme Court asked to restore abortion pill access",
@@ -546,7 +195,7 @@
     "week_day": "Saturday"
   },
   {
-    "id": 12,
+    "id": 15,
     "source_id": "bbc",
     "source_name": "BBC News",
     "title": "Cuba condemns new US sanctions as 'illegal' and 'abusive'",
@@ -559,7 +208,7 @@
     "week_day": "Saturday"
   },
   {
-    "id": 13,
+    "id": 16,
     "source_id": "bbc",
     "source_name": "BBC News",
     "title": "Trump tells Congress ceasefire means he does not need their approval for Iran war",
@@ -572,7 +221,20 @@
     "week_day": "Saturday"
   },
   {
-    "id": 15,
+    "id": 17,
+    "source_id": "bbc",
+    "source_name": "BBC News",
+    "title": "Who shot a Secret Service officer at the Trump press dinner?",
+    "body": "Court papers do not explicitly accuse the suspect of shooting the officer, even as officials say it was not \"friendly fire\".",
+    "category": "Culture",
+    "sentiment": "negative",
+    "published": "2026-05-03T17:29:13+00:00",
+    "day": "2026-05-03",
+    "hour": 17,
+    "week_day": "Sunday"
+  },
+  {
+    "id": 18,
     "source_id": "bbc",
     "source_name": "BBC News",
     "title": "Trump claims other presidents flouted war powers law. It's a mixed record",
@@ -585,7 +247,7 @@
     "week_day": "Saturday"
   },
   {
-    "id": 16,
+    "id": 19,
     "source_id": "bbc",
     "source_name": "BBC News",
     "title": "Ex-F1 driver and Paralympic champion Zanardi dies",
@@ -598,7 +260,7 @@
     "week_day": "Saturday"
   },
   {
-    "id": 17,
+    "id": 20,
     "source_id": "bbc",
     "source_name": "BBC News",
     "title": "Taiwan president visits Eswatini days after blaming China for cancelled trip",
@@ -835,10 +497,10 @@
     "id": 10,
     "source_id": "dw",
     "source_name": "Deutsche Welle",
-    "title": "Why Russia's Northern Sea Route is a risky bet for global trade",
+    "title": "Why Russia's Northern Sea Route is a risk for global trade",
     "body": "Russia wants its Northern Sea Route to become an important artery of global trade. However, the Arctic shortcut between Europe and Asia is fraught with both political and environmental hurdles.",
     "category": "Economy",
-    "sentiment": "neutral",
+    "sentiment": "negative",
     "published": "2026-05-02T19:43:00+00:00",
     "day": "2026-05-02",
     "hour": 19,
@@ -991,6 +653,32 @@
     "id": 0,
     "source_id": "euronews",
     "source_name": "Euronews",
+    "title": "Latest news bulletin | May 3rd, 2026 – Evening",
+    "body": "Catch up with the most important stories from around Europe and beyond this May 3rd, 2026 - latest news, breaking news, World, Business, Entertainment, Politics, Culture, Travel.",
+    "category": "Culture",
+    "sentiment": "positive",
+    "published": "2026-05-03T16:00:29+00:00",
+    "day": "2026-05-03",
+    "hour": 16,
+    "week_day": "Sunday"
+  },
+  {
+    "id": 1,
+    "source_id": "euronews",
+    "source_name": "Euronews",
+    "title": "Iran executes detainee of the 2022 'Woman, Life, Freedom' movement",
+    "body": "Iran's judiciary announced on Sunday that it had carried out the death execution of Mehrab Abdollahzadeh, a man arrested during 2022 protest movement, launched after the death of 22-year-old Mahsa Amini while in Iran's morality police custody.",
+    "category": "War/Security",
+    "sentiment": "negative",
+    "published": "2026-05-03T14:05:12+00:00",
+    "day": "2026-05-03",
+    "hour": 14,
+    "week_day": "Sunday"
+  },
+  {
+    "id": 2,
+    "source_id": "euronews",
+    "source_name": "Euronews",
     "title": "Massive crowds fill Rio's Copacabana beach for free Shakira concert",
     "body": "Latin pop queen Shakira kicks off her free mega-concert on Rio's famed Copacabana beach under a full moon, with drones forming the image of a she-wolf -- her nickname -- overhead as she takes the stage over an hour late.",
     "category": "Culture",
@@ -1001,7 +689,7 @@
     "week_day": "Sunday"
   },
   {
-    "id": 1,
+    "id": 3,
     "source_id": "euronews",
     "source_name": "Euronews",
     "title": "Latest news bulletin | May 3rd, 2026 – Midday",
@@ -1014,7 +702,7 @@
     "week_day": "Sunday"
   },
   {
-    "id": 2,
+    "id": 4,
     "source_id": "euronews",
     "source_name": "Euronews",
     "title": "Trump says US will reduce troop presence in Germany 'a lot further' than initial 5,000 withdrawal",
@@ -1027,7 +715,7 @@
     "week_day": "Sunday"
   },
   {
-    "id": 3,
+    "id": 5,
     "source_id": "euronews",
     "source_name": "Euronews",
     "title": "Trump says Iran has 'not yet paid a big enough price' as he reviews new peace proposal",
@@ -1040,7 +728,7 @@
     "week_day": "Sunday"
   },
   {
-    "id": 4,
+    "id": 6,
     "source_id": "euronews",
     "source_name": "Euronews",
     "title": "Latest news bulletin | May 3rd, 2026 – Morning",
@@ -1053,7 +741,7 @@
     "week_day": "Sunday"
   },
   {
-    "id": 5,
+    "id": 7,
     "source_id": "euronews",
     "source_name": "Euronews",
     "title": "Businessman dies after alleged beating in custody over brother’s Starlink detention",
@@ -1066,7 +754,7 @@
     "week_day": "Saturday"
   },
   {
-    "id": 6,
+    "id": 8,
     "source_id": "euronews",
     "source_name": "Euronews",
     "title": "Iran executes two more over 'spying for Israel'",
@@ -1079,7 +767,7 @@
     "week_day": "Saturday"
   },
   {
-    "id": 7,
+    "id": 9,
     "source_id": "euronews",
     "source_name": "Euronews",
     "title": "Latest news bulletin | May 2nd, 2026 – Evening",
@@ -1092,7 +780,7 @@
     "week_day": "Saturday"
   },
   {
-    "id": 8,
+    "id": 10,
     "source_id": "euronews",
     "source_name": "Euronews",
     "title": "Seven killed in southern Lebanon amid Israeli airstrikes and ceasefire tensions",
@@ -1105,7 +793,7 @@
     "week_day": "Saturday"
   },
   {
-    "id": 9,
+    "id": 11,
     "source_id": "euronews",
     "source_name": "Euronews",
     "title": "Humpback whale stranded in Germany released into North Sea",
@@ -1118,7 +806,7 @@
     "week_day": "Saturday"
   },
   {
-    "id": 10,
+    "id": 12,
     "source_id": "euronews",
     "source_name": "Euronews",
     "title": "Iranian Nobel laureate Narges Mohammadi hospitalised amid deteriorating health condition",
@@ -1131,7 +819,7 @@
     "week_day": "Saturday"
   },
   {
-    "id": 11,
+    "id": 13,
     "source_id": "euronews",
     "source_name": "Euronews",
     "title": "Trump claims hostilities in Iran 'have terminated' in letter sent to top US lawmakers",
@@ -1144,7 +832,7 @@
     "week_day": "Saturday"
   },
   {
-    "id": 12,
+    "id": 14,
     "source_id": "euronews",
     "source_name": "Euronews",
     "title": "Latest news bulletin | May 2nd, 2026 – Midday",
@@ -1157,7 +845,7 @@
     "week_day": "Saturday"
   },
   {
-    "id": 13,
+    "id": 15,
     "source_id": "euronews",
     "source_name": "Euronews",
     "title": "Spirit Airlines says it is going out of business and ending operations 'immediately' after 34 years",
@@ -1170,7 +858,7 @@
     "week_day": "Saturday"
   },
   {
-    "id": 14,
+    "id": 16,
     "source_id": "euronews",
     "source_name": "Euronews",
     "title": "Trump jokes that the US Navy will takeover Cuba 'almost immediately' on the way back from Iran",
@@ -1183,7 +871,7 @@
     "week_day": "Saturday"
   },
   {
-    "id": 15,
+    "id": 17,
     "source_id": "euronews",
     "source_name": "Euronews",
     "title": "Trump follows through on threats as he announces significant troop withdrawal from Germany",
@@ -1196,7 +884,7 @@
     "week_day": "Saturday"
   },
   {
-    "id": 16,
+    "id": 18,
     "source_id": "euronews",
     "source_name": "Euronews",
     "title": "Latest news bulletin | May 2nd, 2026 – Morning",

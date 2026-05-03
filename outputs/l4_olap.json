@@ -9,14 +9,14 @@
     {
       "source_name": "BBC News",
       "day": "2026-05-03",
-      "count": 10,
-      "avg_sentiment": -0.4
+      "count": 14,
+      "avg_sentiment": -0.5714285714285714
     },
     {
       "source_name": "Deutsche Welle",
       "day": "2026-05-02",
       "count": 12,
-      "avg_sentiment": -0.4166666666666667
+      "avg_sentiment": -0.5
     },
     {
       "source_name": "Deutsche Welle",
@@ -33,14 +33,8 @@
     {
       "source_name": "Euronews",
       "day": "2026-05-03",
-      "count": 5,
-      "avg_sentiment": 0.6
-    },
-    {
-      "source_name": "Ukrinform",
-      "day": "2026-05-03",
-      "count": 30,
-      "avg_sentiment": 0.03333333333333333
+      "count": 7,
+      "avg_sentiment": 0.42857142857142855
     }
   ],
   "category_date": [
@@ -53,20 +47,20 @@
     {
       "category": "Culture",
       "day": "2026-05-03",
-      "count": 21,
-      "avg_sentiment": -0.047619047619047616
+      "count": 17,
+      "avg_sentiment": -0.11764705882352941
     },
     {
       "category": "Economy",
       "day": "2026-05-02",
       "count": 7,
-      "avg_sentiment": 0.14285714285714285
+      "avg_sentiment": 0.0
     },
     {
       "category": "Economy",
       "day": "2026-05-03",
-      "count": 5,
-      "avg_sentiment": -0.2
+      "count": 3,
+      "avg_sentiment": -0.3333333333333333
     },
     {
       "category": "Politics",
@@ -77,8 +71,8 @@
     {
       "category": "Politics",
       "day": "2026-05-03",
-      "count": 3,
-      "avg_sentiment": -0.3333333333333333
+      "count": 1,
+      "avg_sentiment": -1.0
     },
     {
       "category": "Society",
@@ -89,20 +83,8 @@
     {
       "category": "Society",
       "day": "2026-05-03",
-      "count": 3,
-      "avg_sentiment": 0.3333333333333333
-    },
-    {
-      "category": "Sports",
-      "day": "2026-05-03",
-      "count": 3,
-      "avg_sentiment": 0.0
-    },
-    {
-      "category": "Technology",
-      "day": "2026-05-03",
-      "count": 6,
-      "avg_sentiment": 0.0
+      "count": 5,
+      "avg_sentiment": -0.4
     },
     {
       "category": "War/Security",
@@ -113,15 +95,15 @@
     {
       "category": "War/Security",
       "day": "2026-05-03",
-      "count": 14,
-      "avg_sentiment": -0.2857142857142857
+      "count": 5,
+      "avg_sentiment": -1.0
     }
   ],
   "source_category": [
     {
       "source_name": "BBC News",
       "category": "Culture",
-      "count": 14
+      "count": 15
     },
     {
       "source_name": "BBC News",
@@ -136,7 +118,7 @@
     {
       "source_name": "BBC News",
       "category": "Society",
-      "count": 3
+      "count": 6
     },
     {
       "source_name": "BBC News",
@@ -171,62 +153,27 @@
     {
       "source_name": "Euronews",
       "category": "Culture",
-      "count": 9
-    },
-    {
-      "source_name": "Euronews",
-      "category": "Economy",
-      "count": 3
-    },
-    {
-      "source_name": "Euronews",
-      "category": "Politics",
-      "count": 1
-    },
-    {
-      "source_name": "Euronews",
-      "category": "Society",
-      "count": 1
-    },
-    {
-      "source_name": "Euronews",
-      "category": "War/Security",
-      "count": 3
-    },
-    {
-      "source_name": "Ukrinform",
-      "category": "Culture",
-      "count": 6
-    },
-    {
-      "source_name": "Ukrinform",
-      "category": "Economy",
-      "count": 2
-    },
-    {
-      "source_name": "Ukrinform",
-      "category": "Politics",
-      "count": 2
-    },
-    {
-      "source_name": "Ukrinform",
-      "category": "Society",
-      "count": 1
-    },
-    {
-      "source_name": "Ukrinform",
-      "category": "Sports",
-      "count": 3
-    },
-    {
-      "source_name": "Ukrinform",
-      "category": "Technology",
-      "count": 6
-    },
-    {
-      "source_name": "Ukrinform",
-      "category": "War/Security",
       "count": 10
+    },
+    {
+      "source_name": "Euronews",
+      "category": "Economy",
+      "count": 3
+    },
+    {
+      "source_name": "Euronews",
+      "category": "Politics",
+      "count": 1
+    },
+    {
+      "source_name": "Euronews",
+      "category": "Society",
+      "count": 1
+    },
+    {
+      "source_name": "Euronews",
+      "category": "War/Security",
+      "count": 4
     }
   ],
   "hour_source": [
@@ -331,11 +278,6 @@
       "count": 2
     },
     {
-      "hour": 10,
-      "source_name": "Ukrinform",
-      "count": 4
-    },
-    {
       "hour": 11,
       "source_name": "Deutsche Welle",
       "count": 3
@@ -346,21 +288,11 @@
       "count": 1
     },
     {
-      "hour": 11,
-      "source_name": "Ukrinform",
-      "count": 7
-    },
-    {
       "hour": 12,
       "source_name": "Euronews",
       "count": 1
     },
     {
-      "hour": 12,
-      "source_name": "Ukrinform",
-      "count": 5
-    },
-    {
       "hour": 13,
       "source_name": "BBC News",
       "count": 1
@@ -376,14 +308,9 @@
       "count": 1
     },
     {
-      "hour": 13,
-      "source_name": "Ukrinform",
-      "count": 6
-    },
-    {
       "hour": 14,
       "source_name": "BBC News",
-      "count": 2
+      "count": 1
     },
     {
       "hour": 14,
@@ -392,8 +319,13 @@
     },
     {
       "hour": 14,
-      "source_name": "Ukrinform",
-      "count": 6
+      "source_name": "Euronews",
+      "count": 1
+    },
+    {
+      "hour": 15,
+      "source_name": "BBC News",
+      "count": 1
     },
     {
       "hour": 15,
@@ -403,11 +335,6 @@
     {
       "hour": 15,
       "source_name": "Euronews",
-      "count": 2
-    },
-    {
-      "hour": 15,
-      "source_name": "Ukrinform",
       "count": 2
     },
     {
@@ -423,12 +350,12 @@
     {
       "hour": 16,
       "source_name": "Euronews",
-      "count": 1
+      "count": 2
     },
     {
       "hour": 17,
       "source_name": "BBC News",
-      "count": 2
+      "count": 4
     },
     {
       "hour": 18,
@@ -439,6 +366,11 @@
       "hour": 18,
       "source_name": "Euronews",
       "count": 1
+    },
+    {
+      "hour": 19,
+      "source_name": "BBC News",
+      "count": 2
     },
     {
       "hour": 19,
@@ -489,7 +421,7 @@
       "source_name": "BBC News",
       "day": "2026-05-03",
       "sentiment": "negative",
-      "count": 6
+      "count": 10
     },
     {
       "source_name": "BBC News",
@@ -507,13 +439,7 @@
       "source_name": "Deutsche Welle",
       "day": "2026-05-02",
       "sentiment": "negative",
-      "count": 8
-    },
-    {
-      "source_name": "Deutsche Welle",
-      "day": "2026-05-02",
-      "sentiment": "neutral",
-      "count": 1
+      "count": 9
     },
     {
       "source_name": "Deutsche Welle",
@@ -549,25 +475,13 @@
       "source_name": "Euronews",
       "day": "2026-05-03",
       "sentiment": "negative",
-      "count": 1
+      "count": 2
     },
     {
       "source_name": "Euronews",
       "day": "2026-05-03",
       "sentiment": "positive",
-      "count": 4
-    },
-    {
-      "source_name": "Ukrinform",
-      "day": "2026-05-03",
-      "sentiment": "neutral",
-      "count": 29
-    },
-    {
-      "source_name": "Ukrinform",
-      "day": "2026-05-03",
-      "sentiment": "positive",
-      "count": 1
+      "count": 5
     }
   ],
   "category_hour": [
@@ -609,12 +523,12 @@
     {
       "category": "Culture",
       "hour": 10,
-      "count": 5
+      "count": 4
     },
     {
       "category": "Culture",
       "hour": 11,
-      "count": 3
+      "count": 2
     },
     {
       "category": "Culture",
@@ -623,13 +537,8 @@
     },
     {
       "category": "Culture",
-      "hour": 13,
-      "count": 1
-    },
-    {
-      "category": "Culture",
       "hour": 14,
-      "count": 5
+      "count": 1
     },
     {
       "category": "Culture",
@@ -639,16 +548,21 @@
     {
       "category": "Culture",
       "hour": 16,
-      "count": 1
+      "count": 2
     },
     {
       "category": "Culture",
       "hour": 17,
-      "count": 1
+      "count": 2
     },
     {
       "category": "Culture",
       "hour": 18,
+      "count": 1
+    },
+    {
+      "category": "Culture",
+      "hour": 19,
       "count": 1
     },
     {
@@ -670,16 +584,6 @@
       "category": "Economy",
       "hour": 8,
       "count": 2
-    },
-    {
-      "category": "Economy",
-      "hour": 11,
-      "count": 1
-    },
-    {
-      "category": "Economy",
-      "hour": 15,
-      "count": 1
     },
     {
       "category": "Economy",
@@ -718,17 +622,7 @@
     },
     {
       "category": "Politics",
-      "hour": 10,
-      "count": 1
-    },
-    {
-      "category": "Politics",
       "hour": 11,
-      "count": 1
-    },
-    {
-      "category": "Politics",
-      "hour": 13,
       "count": 1
     },
     {
@@ -743,57 +637,32 @@
     },
     {
       "category": "Society",
-      "hour": 12,
-      "count": 1
-    },
-    {
-      "category": "Society",
       "hour": 13,
       "count": 1
     },
     {
       "category": "Society",
       "hour": 14,
+      "count": 1
+    },
+    {
+      "category": "Society",
+      "hour": 15,
+      "count": 1
+    },
+    {
+      "category": "Society",
+      "hour": 17,
+      "count": 1
+    },
+    {
+      "category": "Society",
+      "hour": 19,
       "count": 1
     },
     {
       "category": "Society",
       "hour": 22,
-      "count": 1
-    },
-    {
-      "category": "Sports",
-      "hour": 12,
-      "count": 2
-    },
-    {
-      "category": "Sports",
-      "hour": 15,
-      "count": 1
-    },
-    {
-      "category": "Technology",
-      "hour": 10,
-      "count": 1
-    },
-    {
-      "category": "Technology",
-      "hour": 11,
-      "count": 2
-    },
-    {
-      "category": "Technology",
-      "hour": 12,
-      "count": 1
-    },
-    {
-      "category": "Technology",
-      "hour": 13,
-      "count": 1
-    },
-    {
-      "category": "Technology",
-      "hour": 14,
       "count": 1
     },
     {
@@ -813,28 +682,18 @@
     },
     {
       "category": "War/Security",
-      "hour": 10,
-      "count": 1
-    },
-    {
-      "category": "War/Security",
       "hour": 11,
-      "count": 4
-    },
-    {
-      "category": "War/Security",
-      "hour": 12,
       "count": 1
     },
     {
       "category": "War/Security",
       "hour": 13,
-      "count": 5
+      "count": 2
     },
     {
       "category": "War/Security",
       "hour": 14,
-      "count": 2
+      "count": 1
     },
     {
       "category": "War/Security",

@@ -4,11 +4,13 @@ import json
 import spacy
 import numpy as np
 import pandas as pd
+import feedparser, urllib.request
 import nltk
 from nltk.sentiment import SentimentIntensityAnalyzer
+from nltk.corpus import stopwords
 from dotenv import load_dotenv
+from collections import Counter
 from datetime import datetime, timedelta, timezone
-import feedparser, urllib.request
 
 nltk.download('vader_lexicon', quiet=True)
 
@@ -75,7 +77,13 @@ def main():
     cube_serial = {k: v.to_dict(orient="records") for k, v in cube.items()}
     with open(OLAP_JSON, "w", encoding="utf-8") as f:
         json.dump(cube_serial, f, ensure_ascii=False, indent=2, default=str)
-    print(cube)
+    print(f"OLAP was saved to: {OLAP_JSON}")
+
+    tfidf_kw = compute_tfidf_keywords(df)
+    for title, terms in tfidf_kw.items():
+        print(f"{title}")
+        for term, val in terms[:5]:
+            print(f"{term:>15} - {val:.5f}")
 
 
 def detect_language(text: str):
@@ -271,6 +279,72 @@ def build_olap_cube(df: pd.DataFrame):
 
     return cube
 
+
+STOP_WORDS = set(stopwords.words('english'))
+STOP_WORDS.update("та","і","в","у","на","до","з","за","що","як","але","ще","вже",
+    "це","цей","ця","ці","той","та","те","ті","вона","він","воно",
+    "вони","ми","ви","ти","мене","тобі","його","її","нас","вас",
+    "їх","свій","мій","твій","наш","ваш","так","ні","більше","менше",
+    "дуже","трохи","багато","мало","де","куди","звідти","тут","там",)
+
+
+def lemmatize_text(text: str) -> list[str]:
+    if not text or not isinstance(text, str):
+        return []
+    
+    language = detect_language(text)
+    if language == 'uk':
+        doc = nlp_uk(text.lower())
+    else:
+        doc = nlp_en(text.lower())
+    
+    lemmas = [
+        token.lemma_ for token in doc 
+        if token.is_alpha and not token.is_stop and len(token.lemma_) > 2
+        and token.lemma_ not in STOP_WORDS
+    ]
+    return lemmas
+
+
+def compute_tfidf_keywords(df: pd.DataFrame, top_n: int = 20):
+    results = {}
+    groups = df.groupby(["source_name", "day"])
+    
+    all_documents = []
+    for _, row in df.iterrows():
+        text = f"{row['title']} {row['body']}"
+        tokens = lemmatize_text(text)
+        all_documents.append(set(tokens))
+    
+    df_count = Counter()
+    for doc_tokens in all_documents:
+        for token in doc_tokens:
+            df_count[token] += 1
+    
+    total_docs = len(df)
+    
+    for (src, day), group in groups:
+        group_texts = (group["title"] + " " + group["body"]).tolist()
+        
+        tf = Counter()
+        total_terms = 0
+        for text in group_texts:
+            tokens = lemmatize_text(text)
+            for token in tokens:
+                tf[token] += 1
+                total_terms += 1
+        
+        tfidf = {}
+        for word, freq in tf.items():
+            tf_val = freq / max(total_terms, 1)
+            idf_val = np.log((total_docs + 1) / (df_count.get(word, 0) + 1)) + 1  # Smoothing
+            tfidf[word] = tf_val * idf_val
+        
+        top_keywords = sorted(tfidf.items(), key=lambda x: x[1], reverse=True)[:top_n]
+        key_name = f"{src} | {day}"
+        results[key_name] = top_keywords
+            
+    return results
 
 
 if __name__ == "__main__":

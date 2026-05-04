@@ -1,5 +1,6 @@
 import os
 import requests
+import cv2 as cv
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -11,6 +12,8 @@ from sklearn.mixture import GaussianMixture
 from sklearn.neighbors import KNeighborsClassifier, NearestNeighbors
 from sklearn.metrics import silhouette_score, davies_bouldin_score, calinski_harabasz_score, confusion_matrix
 from scipy.cluster.hierarchy import dendrogram, linkage, fcluster
+from matplotlib.colors import ListedColormap
+from pathlib import Path
 
 
 SEP = "=" * 67
@@ -19,11 +22,22 @@ OUTPUT_DIR  = "outputs"
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 
 CSV_PATH = os.path.join(OUTPUT_DIR, "l5_nbu_exchange_rates_2y.csv")
+IMG_PATH = os.path.join(OUTPUT_DIR, "l5_img.jpg")
 
 
 CURRENCIES = ["USD", "EUR", "GBP"]
 DAYS_BACK = 365 * 2
 COLORS = {"USD": "#2196F3", "EUR": "#4CAF50", "GBP": "#FF9800"}
+
+
+C = dict(
+    bg="#0D1117", panel="#161B22", grid="#30363D",
+    text="#E6EDF3", sub="#8B949E",
+    c0="#2196F3", c1="#FF9800", c2="#4CAF50", c3="#E91E63",
+    c4="#9C27B0", c5="#00BCD4", c6="#FF5722",
+    gold="#FFD700", best="#66BB6A", worst="#EF5350",
+)
+PALETTE_7 = [C["c0"],C["c1"],C["c2"],C["c3"],C["c4"],C["c5"],C["c6"]]
 
 
 
@@ -42,26 +56,53 @@ def main():
 
     print(f"\n{SEP}")
     print("GTV-1: Clustering of Exchange Rates")
-    results = gtv1_clustering(df)
+    r1 = gtv1_clustering(df)
 
 
-    print(f"\nPCA: {results["pca"].explained_variance_ratio_.cumsum()*100}")
-    print(f"PCA: {results["pca"].explained_variance_ratio_.sum()*100:.1f}% dispersion in 4 components")
+    print(f"\nPCA: {r1["pca"].explained_variance_ratio_.cumsum()*100}")
+    print(f"PCA: {r1["pca"].explained_variance_ratio_.sum()*100:.1f}% dispersion in 4 components")
 
 
-    print(f"\nK-Means best k: K={results['best_k']}")
+    print(f"\nK-Means best k: K={r1['best_k']}")
     print(f" K  {'Silhouette':<15} {'Davies-B.':<15} {'Calinski':<15}")
-    for idx, k in enumerate(results["K_RANGE"]):
-        print(f" {k}   {results["sils"][idx]:<15.4f} {results["dbs_scores"][idx]:<15.4f} {results["chs"][idx]:<15.4f} ")
+    for idx, k in enumerate(r1["K_RANGE"]):
+        print(f" {k}   {r1["sils"][idx]:<15.4f} {r1["dbs_scores"][idx]:<15.4f} {r1["chs"][idx]:<15.4f} ")
 
     print(f"{'Method':<15} {'K':>4}  {'Silhouette':>10}  {'Davies-B.':>10}  {'Calinski':>10}")
     for m_name in ["K-Means", "Hierarchical", "GMM", "DBSCAN"]:
-        r = results[m_name]
+        r = r1[m_name]
         print(f"{m_name:<15} {r['k']:>4}  {r['sil']:>10.4f}  {r['db']:>10.4f}  {r['ch']:>10.1f}")
-    print(f"KNeighborsClassifier - accuracy: {results['KNN']['acc']*100:.2f}%")
+    print(f"KNeighborsClassifier - accuracy: {r1['KNN']['acc']*100:.2f}%")
 
 
-    # plot_currency_trends(df, "l5_currency_trends.png", CURRENCIES, COLORS)
+    print(f"\n{SEP}")
+    print("GTV-2: Clustering of img")
+
+    img = cv.imread(IMG_PATH)
+    img_rgb = cv.cvtColor(img, cv.COLOR_BGR2RGB)
+    enh_dict = enhance_image(img)
+    enh_img = enh_dict["enhanced"]
+    enh_img_rgb = cv.cvtColor(enh_img, cv.COLOR_BGR2RGB)
+
+
+    r2 = gtv2_color_clustering(img_rgb, enh_img_rgb, n_clusters=7)
+
+    print(f"\nK-Means best k: K={r2['best_k2']}")
+
+    print(f"\n  {'Cluster':>8}  {'Pixels':>9}  {'%':>6} {'L':>6}  {'a':>6}  {'b':>6}  Dominant color")
+    for seg_stat in r2['stats']:
+        rgb_values = tuple(int(x) for x in seg_stat['rgb'])
+        print(f"  {seg_stat['k']:>8}  {seg_stat['count']:>9}  {seg_stat['pct']:>6.2f} {seg_stat['L']:>6.1f}  {seg_stat['a']:>6.1f}  {seg_stat['b']:>6.1f}  {rgb_values}")
+
+    
+
+    plot_pca_methods(r1, "l5_pca_methods.png")
+    plot_dendrogram(r1, "l5_dedrogram.png")
+
+    plot_original_vs_enhanced(img_rgb, enh_img_rgb, "l5_original_vs_enhanced.png")
+    plot_segmented_image(r2, "l5_segmented_image.png")
+    plot_cluster_masks(enh_dict, r2, "l5_cluster_masks.png")
+    
 
 
 def fetch_nbu_rate(currency: str, date: datetime):
@@ -219,43 +260,216 @@ def gtv1_clustering(df: pd.DataFrame):
     return results
 
 
+def enhance_image(img_rgb: np.ndarray):
+    img_bgr = cv.cvtColor(img_rgb, cv.COLOR_RGB2BGR)
+
+    img_bil = cv.bilateralFilter(img_bgr, d=9, sigmaColor=75, sigmaSpace=75)
+
+    img_lab = cv.cvtColor(img_bil, cv.COLOR_BGR2LAB)
+    clahe = cv.createCLAHE(clipLimit=2.5, tileGridSize=(8, 8))
+    img_lab[:, :, 0] = clahe.apply(img_lab[:, :, 0])
+    img_clahe = cv.cvtColor(img_lab, cv.COLOR_LAB2BGR)
+
+    img_hsv = cv.cvtColor(img_clahe, cv.COLOR_BGR2HSV).astype(np.float32)
+    img_hsv[:, :, 1] = np.clip(img_hsv[:, :, 1] * 1.35, 0, 255)
+    img_enhanced_bgr = cv.cvtColor(
+        img_hsv.astype(np.uint8), cv.COLOR_HSV2BGR
+    )
+    img_enhanced = cv.cvtColor(img_enhanced_bgr, cv.COLOR_BGR2RGB)
+
+    return dict(
+        original=img_rgb,
+        bilateral=cv.cvtColor(img_bil, cv.COLOR_BGR2RGB),
+        enhanced=img_enhanced,
+    )
 
 
-def ax_style(ax, title=""):
-    ax.set_facecolor("#1A1D27")
-    ax.tick_params(colors="#AAAAAA")
-    for spine in ax.spines.values():
-        spine.set_edgecolor("#333344")
-    if title:
-        ax.set_title(title, color="#FFFFFF", fontsize=10, fontweight="bold", pad=5)
-    ax.margins(x=0.01)
-    ax.legend(fontsize=7, facecolor="#1A1D27", edgecolor="#444444", labelcolor="#FFFFFF", loc="upper left")
-    ax.grid(linestyle="--", color="#555566", alpha=0.15, linewidth=0.6)
+def gtv2_color_clustering(img_rgb: np.ndarray, img_enhanced: np.ndarray, n_clusters: int):
+    h, w = img_enhanced.shape[:2]
+
+    img_lab = cv.cvtColor(img_enhanced, cv.COLOR_RGB2LAB).astype(np.float32)
+
+    pixels_lab = img_lab.reshape(-1, 3)
+    yy, xx = np.mgrid[0:h, 0:w]
+    coords  = np.stack([xx.ravel() / w * 30, yy.ravel() / h * 30], axis=1).astype(np.float32)
+    pixels  = np.concatenate([pixels_lab, coords], axis=1)
+
+    sample_idx = np.random.choice(len(pixels), 3000, replace=False)
+    X_s = pixels[sample_idx]
+
+    inertias_2, sils_2 = [], []
+    for k in range(2, 9):
+        km = KMeans(n_clusters=k, n_init=5, max_iter=100, random_state=42)
+        lbl_s = km.fit_predict(X_s)
+        inertias_2.append(km.inertia_)
+        sils_2.append(silhouette_score(X_s, lbl_s, sample_size=1000, random_state=42))
+
+    best_k2 = 2 + np.argmax(sils_2)
+
+    km_img = KMeans(n_clusters=n_clusters, n_init=12, max_iter=300, random_state=42)
+    labels = km_img.fit_predict(pixels)
+    labels_img = labels.reshape(h, w)
+
+    centers_lab = km_img.cluster_centers_[:, :3]
+    seg_lab = np.zeros_like(img_lab)
+    for k in range(n_clusters):
+        mask = labels_img == k
+        seg_lab[mask] = centers_lab[k]
+    seg_rgb = cv.cvtColor(np.clip(seg_lab, 0, 255).astype(np.uint8), cv.COLOR_LAB2RGB)
+
+    seg_stats = []
+    total_px   = h * w
+    for k in range(n_clusters):
+        cnt  = int((labels == k).sum())
+        pct  = cnt / total_px * 100
+        L, a, b = centers_lab[k]
+
+        ctr_lab = np.array([[[L, a, b]]], dtype=np.uint8)
+        ctr_rgb = cv.cvtColor(ctr_lab, cv.COLOR_LAB2RGB)[0, 0]
+        r, g, bv = ctr_rgb
+
+        seg_stats.append(dict(k=k, count=cnt, pct=pct, L=L, a=a, b=b, rgb=tuple(ctr_rgb)))
+
+    sil_img = silhouette_score(pixels[::50], labels[::50])
+    print(f"\n  Silhouette score (к=7): {sil_img:.4f}")
+
+    return dict( 
+        best_k2=best_k2,
+        labels=labels_img, seg_rgb=seg_rgb,
+        centers_lab=centers_lab, stats=seg_stats,
+        n_clusters=n_clusters, sil=sil_img,
+        inertias=inertias_2, sils=sils_2,
+    )
 
 
 
-def plot_currency_trends(df: pd.DataFrame, filename: str, currencies: list, colors: dict):
+
+
+
+
+
+
+
+
+
+
+
+def plot_pca_methods(r1: dict, filename):
     output_path = os.path.join(OUTPUT_DIR, filename)
-
-    n_cur = len(currencies)
-    fig, axes = plt.subplots(n_cur, 1, figsize=(12, 9), facecolor="#0F1117")
-
-    dates = pd.to_datetime(df["date"])
-
-    for i, cur in enumerate(currencies):
-        ax = axes[i]
-        y = df[cur].values
-
-        ax.plot(dates, y, color=colors[cur], alpha=0.8, label="real_data")
-        ax_style(ax, f"{cur}/UAH — курс та тренди")
-        ax.set_ylabel("UAH", color="#AAAAAA", fontsize=8)
-        # ax.legend(fontsize=7, facecolor="#1A1D27", edgecolor="#444444", labelcolor="#FFFFFF", loc="upper left")
+    fig = plt.figure(figsize=(18, 10), facecolor=C["bg"])
+    best_k = r1["best_k"]
+    X_pca = r1["X_pca"]
+    cmap_k = ListedColormap(PALETTE_7[:best_k])
     
-    plt.tight_layout(pad=3)
+    methods_plot = [
+        ("K-Means", r1["K-Means"]["labels"]),
+        ("Hierarchical", r1["Hierarchical"]["labels"]),
+        ("GMM", r1["GMM"]["labels"]),
+        ("DBSCAN", r1["DBSCAN"]["labels"]),
+    ]
+    
+    for i, (mname, lbls) in enumerate(methods_plot, 1):
+        ax = fig.add_subplot(2, 2, i)
+        sc = ax.scatter(X_pca[:, 0], X_pca[:, 1], c=lbls, cmap=cmap_k, s=14, alpha=0.75)
+        
+        if mname == "K-Means":
+            ctr_pca = r1["pca"].transform(r1["K-Means"]["centers"])
+            ax.scatter(ctr_pca[:, 0], ctr_pca[:, 1], marker="*", s=200, c="white", edgecolors="black", linewidths=0.8, zorder=10)
+        
+        k_show = r1[mname]["k"] if mname != "DBSCAN" else r1["DBSCAN"]["k"]
+        sil_show = r1[mname]["sil"]
+        ax.set_title(f"{mname} (k={k_show}) Sil={sil_show:.3f}", color=C["text"])
+        ax.set_xlabel("PC1", color=C["sub"])
+        ax.set_ylabel("PC2", color=C["sub"])
+        ax.set_facecolor(C["panel"])
+        ax.tick_params(colors=C["sub"])
+        plt.colorbar(sc, ax=ax, fraction=0.04)
+    
+    fig.suptitle("Порівняння методів кластеризації в PCA просторі", color=C["text"])
+    fig.tight_layout()
     plt.savefig(output_path)
     plt.show()
-    print(f"Trend analysis: {output_path}")
 
+
+def plot_dendrogram(r1: dict, filename):
+    output_path = os.path.join(OUTPUT_DIR, filename)
+    fig, ax = plt.subplots(figsize=(12, 6), facecolor=C["bg"])
+    best_k = r1["best_k"]
+    
+    dendrogram(r1["Z_link"], ax=ax, truncate_mode="lastp", p=20, show_leaf_counts=True, color_threshold=r1["Z_link"][-best_k+1, 2], above_threshold_color=C["sub"])
+    
+    ax.set_facecolor(C["panel"])
+    ax.tick_params(colors=C["sub"])
+    for sp in ax.spines.values():
+        sp.set_edgecolor(C["grid"])
+    
+    ax.set_title("Dendrogram (Ward linkage)", color=C["text"])
+    ax.set_xlabel("Index", color=C["sub"])
+    ax.set_ylabel("Відстань злиття", color=C["sub"])
+    
+    plt.tight_layout()
+    plt.savefig(output_path)
+    plt.show()
+
+
+def plot_original_vs_enhanced(original_img: np.ndarray, enhanced_img: np.ndarray, filename):
+    output_path = os.path.join(OUTPUT_DIR, filename)
+    fig, axes = plt.subplots(1, 2, figsize=(12, 6), facecolor=C["bg"])
+    
+    axes[0].imshow(original_img)
+    axes[0].set_title("Original", color=C["text"])
+    axes[0].axis("off")
+    axes[0].set_facecolor(C["panel"])
+    
+    axes[1].imshow(enhanced_img)
+    axes[1].set_title("Enhanced", color=C["text"])
+    axes[1].axis("off")
+    axes[1].set_facecolor(C["panel"])
+    
+    fig.suptitle("Image comparison", color=C["text"])
+    plt.tight_layout()
+    
+    plt.savefig(output_path)
+    plt.show()
+
+
+def plot_segmented_image(r2: dict, filename):
+    output_path = os.path.join(OUTPUT_DIR, filename)
+    fig, ax = plt.subplots(figsize=(10, 6), facecolor=C["bg"])
+    ax.imshow(r2["seg_rgb"])
+    ax.set_title(f"K-Means segmentation (K={r2['n_clusters']}) Sil={r2['sil']:.4f}", color=C["text"])
+    ax.axis("off")
+    
+    plt.tight_layout()
+    plt.savefig(output_path)
+    plt.show()
+
+
+def plot_cluster_masks(enh_dict: dict, r2: dict, filename):
+    output_path = os.path.join(OUTPUT_DIR, filename)
+    n_show = min(r2["n_clusters"], 4)
+    fig, axes = plt.subplots(1, n_show, figsize=(5*n_show, 4), facecolor=C["bg"])
+    if n_show == 1:
+        axes = [axes]
+    
+    stats_sorted = sorted(r2["stats"], key=lambda x: x["count"], reverse=True)
+    
+    for ax, s in zip(axes, stats_sorted[:n_show]):
+        mask = r2["labels"] == s["k"]
+        img = cv.cvtColor(enh_dict["enhanced"], cv.COLOR_RGB2BGR)
+        overlay = img.copy()
+        overlay[~mask] = (overlay[~mask] * 0.20).astype(np.uint8)
+        ax.imshow(overlay)
+        r_c, g_c, b_c = s["rgb"]
+        ax.set_title(f"Cluster {s['k']}: {s['pct']:.1f}% RGB({r_c},{g_c},{b_c})", color=C["text"])
+        ax.axis("off")
+        ax.set_facecolor(C["panel"])
+    
+    fig.suptitle("Visualization of individual color clusters", color=C["text"])
+    plt.tight_layout()
+    
+    plt.savefig(output_path)
+    plt.show()
 
 
 if __name__ == "__main__":

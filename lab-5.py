@@ -7,6 +7,8 @@ from datetime import datetime, timedelta
 from sklearn.preprocessing import StandardScaler
 from sklearn.decomposition import PCA
 from sklearn.cluster import KMeans, AgglomerativeClustering, DBSCAN
+from sklearn.mixture import GaussianMixture
+from sklearn.neighbors import KNeighborsClassifier, NearestNeighbors
 from sklearn.metrics import silhouette_score, davies_bouldin_score, calinski_harabasz_score, confusion_matrix
 from scipy.cluster.hierarchy import dendrogram, linkage, fcluster
 
@@ -47,11 +49,16 @@ def main():
     print(f"PCA: {results["pca"].explained_variance_ratio_.sum()*100:.1f}% dispersion in 4 components")
 
 
-    print(f"\nBest k: K={results['best_k']}")
+    print(f"\nK-Means best k: K={results['best_k']}")
     print(f" K  {'Silhouette':<15} {'Davies-B.':<15} {'Calinski':<15}")
     for idx, k in enumerate(results["K_RANGE"]):
         print(f" {k}   {results["sils"][idx]:<15.4f} {results["dbs_scores"][idx]:<15.4f} {results["chs"][idx]:<15.4f} ")
 
+    print(f"{'Method':<15} {'K':>4}  {'Silhouette':>10}  {'Davies-B.':>10}  {'Calinski':>10}")
+    for m_name in ["K-Means", "Hierarchical", "GMM", "DBSCAN"]:
+        r = results[m_name]
+        print(f"{m_name:<15} {r['k']:>4}  {r['sil']:>10.4f}  {r['db']:>10.4f}  {r['ch']:>10.1f}")
+    print(f"KNeighborsClassifier - accuracy: {results['KNN']['acc']*100:.2f}%")
 
 
     # plot_currency_trends(df, "l5_currency_trends.png", CURRENCIES, COLORS)
@@ -145,6 +152,7 @@ def gtv1_clustering(df: pd.DataFrame):
                "pca" : pca,
                "scaler" : scaler}
 
+
     km = KMeans(n_clusters=best_k, n_init=20, random_state=42)
     lbl_km = km.fit_predict(X)
     results["K-Means"] = dict(
@@ -154,6 +162,7 @@ def gtv1_clustering(df: pd.DataFrame):
         ch=calinski_harabasz_score(X, lbl_km), 
         centers=km.cluster_centers_,
     )
+
 
     agg = AgglomerativeClustering(n_clusters=best_k, linkage="ward")
     lbl_a = agg.fit_predict(X)
@@ -166,7 +175,46 @@ def gtv1_clustering(df: pd.DataFrame):
     Z_link = linkage(X[:80], method="ward")
     results["Z_link"] = Z_link
 
-        
+    
+    gmm = GaussianMixture(n_components=best_k, covariance_type="full", n_init=5, random_state=42)
+    lbl_g = gmm.fit_predict(X)
+    proba = gmm.predict_proba(X)
+    results["GMM"] = dict(
+        labels=lbl_g, k=best_k, proba=proba,
+        sil=silhouette_score(X, lbl_g),
+        db=davies_bouldin_score(X, lbl_g),
+        ch=calinski_harabasz_score(X, lbl_g),
+        bic=gmm.bic(X), aic=gmm.aic(X),
+    )
+
+
+    nbrs = NearestNeighbors(n_neighbors=5).fit(X)
+    dists, _ = nbrs.kneighbors(X)
+    eps = float(np.percentile(dists[:, -1], 90))
+    dbs_m = DBSCAN(eps=eps, min_samples=5)
+    lbl_d = dbs_m.fit_predict(X)
+    n_dbscan = len(set(lbl_d)) - (1 if -1 in lbl_d else 0)
+    noise_n = int((lbl_d == -1).sum())
+    sil_d = silhouette_score(X, lbl_d) if n_dbscan > 1 else -1.0
+    results["DBSCAN"] = dict(
+        labels=lbl_d, k=n_dbscan, eps=eps,
+        sil=sil_d, noise=noise_n,
+        db=davies_bouldin_score(X, lbl_d) if n_dbscan>1 else 99,
+        ch=calinski_harabasz_score(X, lbl_d) if n_dbscan>1 else 0,
+    )
+
+
+    split = int(len(X) * 0.8)
+    X_tr, X_te = X[:split], X[split:]
+    y_tr, y_te = lbl_km[:split], lbl_km[split:]
+    knn = KNeighborsClassifier(n_neighbors=5, metric="euclidean")
+    knn.fit(X_tr, y_tr)
+    acc = knn.score(X_te, y_te)
+    lbl_knn = knn.predict(X)
+    results["KNN"] = dict(
+        labels=lbl_knn, acc=acc, k=best_k,
+        sil=silhouette_score(X, lbl_knn),
+    )
 
     return results
 

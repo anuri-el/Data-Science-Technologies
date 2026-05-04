@@ -6,35 +6,18 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 import feedparser, urllib.request
-import nltk
 from nltk.sentiment import SentimentIntensityAnalyzer
 from nltk.corpus import stopwords
-from dotenv import load_dotenv
 from collections import Counter
 from datetime import datetime, timedelta, timezone
-
-import matplotlib.gridspec as gridspec
-from matplotlib.ticker import MaxNLocator
-
-
-
 import matplotlib.patches as mpatches
-from mpl_toolkits.mplot3d import Axes3D  # noqa: F401
 from mpl_toolkits.mplot3d.art3d import Poly3DCollection
 from matplotlib.colors import Normalize, LinearSegmentedColormap
 from matplotlib.cm import ScalarMappable
 from scipy.ndimage import gaussian_filter
-from typing import List, Dict, Optional
 
-
-
-
-nltk.download('vader_lexicon', quiet=True)
 
 SEP = "=" * 67
-
-load_dotenv()
-API_KEY = os.environ.get("NEWS_API_KEY")
 
 nlp_en = spacy.load("en_core_web_md")
 nlp_uk = spacy.load("uk_core_news_md")
@@ -365,7 +348,7 @@ STOP_WORDS.update("та","і","в","у","на","до","з","за","що","як",
     "дуже","трохи","багато","мало","де","куди","звідти","тут","там",)
 
 
-def lemmatize_text(text: str) -> list[str]:
+def lemmatize_text(text: str):
     if not text or not isinstance(text, str):
         return []
     
@@ -553,7 +536,7 @@ def setup_3d_axes(ax, title, xlabel="", ylabel="", zlabel="", elev=25, azim=-50)
     ax.tick_params(colors=C["sub"])
 
 
-def plot_3d_bar_source_category_sentiment(df: pd.DataFrame, cube: dict, sources: List[str], filename):
+def plot_3d_bar_source_category_sentiment(df: pd.DataFrame, cube: dict, sources, filename):
     fig = plt.figure(figsize=(14, 10), facecolor=C["bg"])
     ax = fig.add_subplot(111, projection="3d")
     
@@ -655,7 +638,7 @@ def plot_3d_surface_category_hour(cube: dict, filename):
     print(f"'{title}' saved to: {output_path}")
 
 
-def plot_3d_waterfall_category_day(df: pd.DataFrame, days: List[str], filename):
+def plot_3d_waterfall_category_day(df: pd.DataFrame, days, filename):
     fig = plt.figure(figsize=(14, 10), facecolor=C["bg"])
     ax = fig.add_subplot(111, projection="3d")
     

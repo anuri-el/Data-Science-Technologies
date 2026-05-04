@@ -10,10 +10,9 @@ from sklearn.decomposition import PCA
 from sklearn.cluster import KMeans, AgglomerativeClustering, DBSCAN
 from sklearn.mixture import GaussianMixture
 from sklearn.neighbors import KNeighborsClassifier, NearestNeighbors
-from sklearn.metrics import silhouette_score, davies_bouldin_score, calinski_harabasz_score, confusion_matrix
-from scipy.cluster.hierarchy import dendrogram, linkage, fcluster
+from sklearn.metrics import silhouette_score, davies_bouldin_score, calinski_harabasz_score
+from scipy.cluster.hierarchy import dendrogram, linkage
 from matplotlib.colors import ListedColormap
-from pathlib import Path
 
 
 SEP = "=" * 67
@@ -24,21 +23,16 @@ os.makedirs(OUTPUT_DIR, exist_ok=True)
 CSV_PATH = os.path.join(OUTPUT_DIR, "l5_nbu_exchange_rates_2y.csv")
 IMG_PATH = os.path.join(OUTPUT_DIR, "l5_img.jpg")
 
-
 CURRENCIES = ["USD", "EUR", "GBP"]
 DAYS_BACK = 365 * 2
-COLORS = {"USD": "#2196F3", "EUR": "#4CAF50", "GBP": "#FF9800"}
-
 
 C = dict(
     bg="#0D1117", panel="#161B22", grid="#30363D",
     text="#E6EDF3", sub="#8B949E",
     c0="#2196F3", c1="#FF9800", c2="#4CAF50", c3="#E91E63",
-    c4="#9C27B0", c5="#00BCD4", c6="#FF5722",
-    gold="#FFD700", best="#66BB6A", worst="#EF5350",
+    c4="#9C27B0", c5="#00BCD4", c6="#FF5722"
 )
 PALETTE_7 = [C["c0"],C["c1"],C["c2"],C["c3"],C["c4"],C["c5"],C["c6"]]
-
 
 
 def main():
@@ -75,6 +69,7 @@ def main():
     print(f"KNeighborsClassifier - accuracy: {r1['KNN']['acc']*100:.2f}%")
 
 
+
     print(f"\n{SEP}")
     print("GTV-2: Clustering of img")
 
@@ -84,17 +79,40 @@ def main():
     enh_img = enh_dict["enhanced"]
     enh_img_rgb = cv.cvtColor(enh_img, cv.COLOR_BGR2RGB)
 
-
-    r2 = gtv2_color_clustering(img_rgb, enh_img_rgb, n_clusters=7)
+    r2 = gtv2_color_clustering(img_rgb, enh_img_rgb, n_clusters=3)
 
     print(f"\nK-Means best k: K={r2['best_k2']}")
-
     print(f"\n  {'Cluster':>8}  {'Pixels':>9}  {'%':>6} {'L':>6}  {'a':>6}  {'b':>6}  Dominant color")
     for seg_stat in r2['stats']:
         rgb_values = tuple(int(x) for x in seg_stat['rgb'])
         print(f"  {seg_stat['k']:>8}  {seg_stat['count']:>9}  {seg_stat['pct']:>6.2f} {seg_stat['L']:>6.1f}  {seg_stat['a']:>6.1f}  {seg_stat['b']:>6.1f}  {rgb_values}")
 
-    
+
+
+    print(f"\n{SEP}")
+    print("GTV-3: Counting objects on an image ")
+    coins_img, placed = detect_coins_from_image("./outputs/l5_coins.jpg")
+
+    r3 = gtv3_object_counting(coins_img, placed)
+
+    print(f"True number of coins: {r3['gt_count']}")
+    print(f"{'Method':<28} {'Count':<8} Error")
+    for name, cnt in [
+        ("HoughCircles", r3['n_hough']),
+        ("Watershed + CC", r3['n_ws']),
+        ("Ensemble (fused)", r3['n_fused']),
+    ]:
+        err = abs(cnt - r3['gt_count'])
+        pct = err / max(r3['gt_count'], 1) * 100
+        print(f"  {name:<28} {cnt:<8} {pct:5.1f}%")
+
+    print(f"Radius (fused):")
+    print(f"  Small  (r <  60 px) : {r3['small']}")
+    print(f"  Medium (60 ≤ r < 75): {r3['medium']}")
+    print(f"  Large  (r ≥  75 px) : {r3['large']}")
+    if r3['radii']:
+        print(f" min={min(r3['radii'])}px  max={max(r3['radii'])}px  avg={sum(r3['radii'])/len(r3['radii']):.1f}px")
+
 
     plot_pca_methods(r1, "l5_pca_methods.png")
     plot_dendrogram(r1, "l5_dedrogram.png")
@@ -103,6 +121,8 @@ def main():
     plot_segmented_image(r2, "l5_segmented_image.png")
     plot_cluster_masks(enh_dict, r2, "l5_cluster_masks.png")
     
+    plot_detection_results(r3['img_bgr'], r3['opened'], r3['ws_det'], r3['fused'], r3['markers_ws'], r3['gt_count'], "l5_detection_results.png")
+    plot_radii_histogram(r3, "l5_radii_histogram.png")
 
 
 def fetch_nbu_rate(currency: str, date: datetime):
@@ -342,16 +362,138 @@ def gtv2_color_clustering(img_rgb: np.ndarray, img_enhanced: np.ndarray, n_clust
     )
 
 
+def detect_coins_from_image(image_path: str):
+    img = cv.imread(image_path)
+   
+    img_rgb = cv.cvtColor(img, cv.COLOR_BGR2RGB)
+    img_gray = cv.cvtColor(img, cv.COLOR_BGR2GRAY)
+    blurred = cv.medianBlur(img_gray, 7)
+    blurred = cv.GaussianBlur(blurred, (9, 9), 2.5)
+
+    circles = cv.HoughCircles(blurred, cv.HOUGH_GRADIENT, dp=1.15, minDist=60, param1=60, param2=35, minRadius=50, maxRadius=90)
+    
+    placed = []
+    if circles is not None:
+        circles = np.round(circles[0, :]).astype(int)
+        
+        for (x, y, r) in circles:
+            mask = np.zeros_like(blurred)
+            cv.circle(mask, (x, y), r, 255, -1)
+            
+            mean_color = cv.mean(img_rgb, mask=mask)[:3]
+            mean_color = [c / 255.0 for c in mean_color]
+            
+            placed.append((x, y, r, mean_color))
+    return img_rgb, placed
 
 
+def gtv3_object_counting(img_rgb: np.ndarray, ground_truth: list):
+    h, w = img_rgb.shape[:2]
+    img_bgr = cv.cvtColor(img_rgb, cv.COLOR_RGB2BGR)
+    img_gray = cv.cvtColor(img_bgr, cv.COLOR_BGR2GRAY)
+
+    blurred_h = cv.medianBlur(img_gray, 7)
+    blurred_h = cv.GaussianBlur(blurred_h, (9, 9), 2.5)
+
+    raw_circles = cv.HoughCircles(blurred_h, cv.HOUGH_GRADIENT, dp=1.15, minDist=60, param1=60, param2=35, minRadius=50, maxRadius=90)
+    hough_det = []
+    if raw_circles is not None:
+        for (x, y, r) in np.round(raw_circles[0]).astype(int):
+            mask = np.zeros(img_gray.shape, dtype=np.uint8)
+            cv.circle(mask, (x, y), r, 255, -1)
+            mc = cv.mean(img_rgb, mask=mask)[:3]
+            hough_det.append((int(x), int(y), int(r), tuple(c / 255.0 for c in mc)))
 
 
+    bil  = cv.bilateralFilter(img_gray, d=11, sigmaColor=80, sigmaSpace=80)
+    clahe = cv.createCLAHE(clipLimit=3.0, tileGridSize=(8, 8))
+    enh  = clahe.apply(bil)
+
+    _, thr_otsu = cv.threshold(enh, 0, 255, cv.THRESH_BINARY_INV + cv.THRESH_OTSU)
+    thr_adapt = cv.adaptiveThreshold(enh, 255, cv.ADAPTIVE_THRESH_GAUSSIAN_C, cv.THRESH_BINARY_INV, 31, 4)
+    thr_combined = cv.bitwise_and(thr_otsu, thr_adapt)
+
+    kernel = cv.getStructuringElement(cv.MORPH_ELLIPSE, (7, 7))
+    closed = cv.morphologyEx(thr_combined, cv.MORPH_CLOSE, kernel, iterations=2)
+    opened = cv.morphologyEx(closed, cv.MORPH_OPEN, kernel, iterations=1)
+
+    dist   = cv.distanceTransform(opened, cv.DIST_L2, 5)
+    dist_n = cv.normalize(dist, None, 0, 255, cv.NORM_MINMAX).astype(np.uint8)
+
+    _, fg_sure = cv.threshold(dist_n, int(0.45 * dist_n.max()), 255, cv.THRESH_BINARY)
+    fg_sure = fg_sure.astype(np.uint8)
+
+    bg_sure = cv.dilate(opened, kernel, iterations=3)
+    unknown = cv.subtract(bg_sure, fg_sure)
+
+    n_markers, markers = cv.connectedComponents(fg_sure)
+    markers = markers + 1
+    markers[unknown == 255] = 0
+    img_ws = img_bgr.copy()
+    markers_ws = cv.watershed(img_ws, markers)
+
+    n_cc, cc_labels, cc_stats, cc_centroids = cv.connectedComponentsWithStats(fg_sure, connectivity=8)
+    min_area = 500
+    max_area = h * w // 20
+    valid_cc = [i for i in range(1, n_cc) if min_area < cc_stats[i, cv.CC_STAT_AREA] < max_area]
+
+    ws_det = []
+    for i in valid_cc:
+        cx = int(cc_centroids[i][0])
+        cy = int(cc_centroids[i][1])
+        area = cc_stats[i, cv.CC_STAT_AREA]
+        r_eq = int(np.sqrt(area / np.pi))
+        mask = np.zeros(img_gray.shape, dtype=np.uint8)
+        cv.circle(mask, (cx, cy), r_eq, 255, -1)
+        mc = cv.mean(img_rgb, mask=mask)[:3]
+        ws_det.append((cx, cy, r_eq, tuple(c / 255.0 for c in mc)))
 
 
+    def circle_iou(c1, c2):
+        x1, y1, r1 = c1[0], c1[1], c1[2]
+        x2, y2, r2 = c2[0], c2[1], c2[2]
+        d = np.hypot(x1 - x2, y1 - y2)
+        if d >= r1 + r2:
+            return 0.0
+        if d <= abs(r1 - r2):
+            smaller = min(r1, r2)
+            return (np.pi * smaller**2) / (np.pi * max(r1, r2)**2)
+        
+        a1 = r1**2 * np.arccos((d**2 + r1**2 - r2**2) / (2*d*r1))
+        a2 = r2**2 * np.arccos((d**2 + r2**2 - r1**2) / (2*d*r2))
+        tri = 0.5 * np.sqrt((-d+r1+r2)*(d+r1-r2)*(d-r1+r2)*(d+r1+r2))
+        inter = a1 + a2 - tri
+        union  = np.pi*(r1**2 + r2**2) - inter
+        return inter / union if union > 0 else 0.0
 
+    IOU_THRESH = 0.30
 
+    fused = list(hough_det)
+    for ws_c in ws_det:
+        overlaps = any(circle_iou(ws_c, h_c) > IOU_THRESH for h_c in fused)
+        if not overlaps:
+            fused.append(ws_c)
 
+    n_hough = len(hough_det)
+    n_ws = len(ws_det)
+    n_fused = len(fused)
+    gt_count = len(ground_truth)
 
+    radii_f = [c[2] for c in fused]
+    small = sum(1 for r in radii_f if r < 60)
+    medium = sum(1 for r in radii_f if 60 <= r < 75)
+    large = sum(1 for r in radii_f if r >= 75)
+
+    return dict(
+        img_bgr=img_bgr,
+        hough_det=hough_det, ws_det=ws_det, fused=fused,
+        n_hough=n_hough, n_ws=n_ws, n_fused=n_fused,
+        gt_count=gt_count,
+        blurred_h=blurred_h, enh=enh,
+        thr_combined=thr_combined, opened=opened,
+        dist_n=dist_n, fg_sure=fg_sure, markers_ws=markers_ws,
+        radii=radii_f, small=small, medium=medium, large=large,
+    )
 
 
 def plot_pca_methods(r1: dict, filename):
@@ -385,7 +527,7 @@ def plot_pca_methods(r1: dict, filename):
         ax.tick_params(colors=C["sub"])
         plt.colorbar(sc, ax=ax, fraction=0.04)
     
-    fig.suptitle("Порівняння методів кластеризації в PCA просторі", color=C["text"])
+    fig.suptitle("Comparison of clustering methods in PCA space", color=C["text"])
     fig.tight_layout()
     plt.savefig(output_path)
     plt.show()
@@ -428,7 +570,6 @@ def plot_original_vs_enhanced(original_img: np.ndarray, enhanced_img: np.ndarray
     
     fig.suptitle("Image comparison", color=C["text"])
     plt.tight_layout()
-    
     plt.savefig(output_path)
     plt.show()
 
@@ -467,7 +608,65 @@ def plot_cluster_masks(enh_dict: dict, r2: dict, filename):
     
     fig.suptitle("Visualization of individual color clusters", color=C["text"])
     plt.tight_layout()
+    plt.savefig(output_path)
+    plt.show()
+
+
+def plot_detection_results(img_bgr: np.ndarray, opened: np.ndarray, ws_det: list, fused: list, markers_ws: np.ndarray, gt_count: int, filename):
+    output_path = os.path.join(OUTPUT_DIR, filename)
+    img_ws_vis = img_bgr.copy()
+    for (x, y, r, _) in ws_det:
+        cv.circle(img_ws_vis, (x, y), r, (255, 140, 0), 2)
+        cv.circle(img_ws_vis, (x, y), 3, (0, 0, 200), -1)
+
+    img_fused = img_bgr.copy()
+    for idx, (x, y, r, _) in enumerate(fused):
+        cv.circle(img_fused, (x, y), r, (0, 255, 0), 2)
+        cv.circle(img_fused, (x, y), 3, (0, 0, 255), -1)
+        cv.putText(img_fused, str(idx + 1), (x - 10, y + 5), cv.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 0), 1)
+
+    ws_boundary = img_bgr.copy()
+    ws_boundary[markers_ws == -1] = [0, 0, 255]
+
+    fig, axes = plt.subplots(1, 3, figsize=(18, 6))
     
+    panels = [
+        (opened, "Watershed: морфологія", True),
+        (img_ws_vis, f"Watershed+CC: {len(ws_det)}/{gt_count}"),
+        (img_fused, f"Ensemble fused: {len(fused)}/{gt_count}"),
+    ]
+    
+    for ax, (panel, title, *gray) in zip(axes.flat, panels):
+        if gray:
+            ax.imshow(panel, cmap="gray")
+        else:
+            ax.imshow(cv.cvtColor(panel, cv.COLOR_BGR2RGB))
+        ax.set_title(title)
+        ax.axis("off")
+    
+    plt.tight_layout()
+    plt.savefig(output_path)
+    plt.show()
+
+
+def plot_radii_histogram(r3: dict, filename):
+    output_path = os.path.join(OUTPUT_DIR, filename)
+    fig, ax = plt.subplots(figsize=(10, 6), facecolor=C["bg"])
+    
+    if r3["radii"]:
+        bins_r = np.linspace(min(r3["radii"]), max(r3["radii"]), 12)
+        ax.hist(r3["radii"], bins=bins_r, color=C["c1"], alpha=0.85, edgecolor=C["grid"])
+        ax.axvline(60, color=C["c3"], ls="--", lw=2, label="small/medium")
+        ax.axvline(75, color=C["c0"], ls="--", lw=2, label="medium/large")
+    
+    ax.set_title("Distribution of coin radii (pixels)", color=C["text"])
+    ax.set_xlabel("Radius, px", color=C["sub"])
+    ax.set_ylabel("Quantity", color=C["sub"])
+    ax.set_facecolor(C["panel"])
+    ax.tick_params(colors=C["sub"])
+    ax.legend(facecolor=C["panel"], edgecolor=C["grid"], labelcolor=C["text"])
+    
+    plt.tight_layout()
     plt.savefig(output_path)
     plt.show()
 

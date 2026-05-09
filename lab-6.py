@@ -1,17 +1,23 @@
 import os
 import numpy as np
+import matplotlib.pyplot as plt
 from sklearn.preprocessing import RobustScaler
+from scipy.stats import norm
 
 
 SEP = "=" * 67
 
-
 OUTPUT_DIR  = "outputs"
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 
-CSV_PATH = os.path.join(OUTPUT_DIR, "l5_nbu_exchange_rates_2y.csv")
-IMG_PATH = os.path.join(OUTPUT_DIR, "l5_img.jpg")
+# CSV_PATH = os.path.join(OUTPUT_DIR, "l5_nbu_exchange_rates_2y.csv")
+# IMG_PATH = os.path.join(OUTPUT_DIR, "l5_img.jpg")
 
+C = dict(
+    sub="#8B949E", gold="#FFD700",
+    true="#26C6DA", pred="#FF9800", anom="#EF5350",
+    clean="#42A5F5", train="#4CAF50", val="#AB47BC",
+)
 
 N = 5000
 A0 = 10.0 
@@ -45,6 +51,9 @@ def main():
     print(f"Horizon : {HORIZON} steps")
     print(f"Train: {data['n_train']}  Val: {data['n_val']}  Test: {data['n_test']}")
 
+
+    plot_dataset_overview(t, y_trend, y_clean, y_noisy, anom_mask, data["n_train"], data["n_val"], N, "l6_dataset_overview.png")
+    plot_distributions(y_clean, y_trend, y_noisy, anom_mask, "l6_distributions.png")
 
 
 def generate_dataset():
@@ -101,8 +110,8 @@ def build_train_test(y_noisy: np.ndarray, y_clean: np.ndarray):
     return dict(
         scaler=scaler, y_sc=y_sc, y_cl_sc=y_cl_sc,
         X_train=X_train, y_train=y_train,
-        X_val=X_val,     y_val=y_val,
-        X_test=X_test,   y_test=y_test,
+        X_val=X_val, y_val=y_val,
+        X_test=X_test, y_test=y_test,
         X_train_3d=X_train_3d,
         X_val_3d=X_val_3d,
         X_test_3d=X_test_3d,
@@ -111,6 +120,55 @@ def build_train_test(y_noisy: np.ndarray, y_clean: np.ndarray):
 
 
 
+def plot_dataset_overview(t, y_trend, y_clean, y_noisy, anom_mask, n_tr, n_val, N, fname):
+    fig, ax = plt.subplots(figsize=(16, 8))
+    
+    ax.plot(t, y_trend, color=C["true"], lw=2.2, ls="--", alpha=0.85, label="y = 0.012t + 5", zorder=4)
+    ax.plot(t, y_clean, color=C["clean"], lw=0.8, alpha=0.45, label="sigma=20")
+    ax.plot(t[~anom_mask], y_noisy[~anom_mask], color=C["sub"], lw=0.7, alpha=0.60, label="Noisy")
+    ax.scatter(t[anom_mask], y_noisy[anom_mask], color=C["anom"], s=10, zorder=5, label=f"Anomalies ({anom_mask.sum()}, 10%)", alpha=0.8)
+    
+    ax.axvspan(0, n_tr, alpha=0.06, color=C["train"])
+    ax.axvspan(n_tr, n_tr + n_val, alpha=0.06, color=C["val"])
+    ax.axvspan(n_tr + n_val, N, alpha=0.06, color=C["gold"])
+    ax.text(n_tr * 0.5, y_noisy.max() * 0.95, "TRAIN", ha="center")
+    ax.text(n_tr + n_val * 0.5, y_noisy.max() * 0.95, "VAL", ha="center")
+    ax.text(n_tr + n_val + (N - n_tr - n_val) * 0.5, y_noisy.max() * 0.95, "TEST", ha="center")
+    
+    ax.set_title(f"Dataset: N={N}, linear trend + N(0,{NOISE_STD}) + 10% anomalies")
+    ax.set_xlabel("t")
+    ax.set_ylabel("y")
+    ax.legend(ncol=4)
+    
+    plt.tight_layout()
+    path = os.path.join(OUTPUT_DIR, fname)
+    plt.savefig(path)
+    plt.show()
+
+
+def plot_distributions(y_clean, y_trend, y_noisy, anom_mask, fname):
+    fig, axes = plt.subplots(1, 2, figsize=(14, 6))
+    
+    residuals = y_clean - y_trend
+    axes[0].hist(residuals, bins=60, density=True, color=C["clean"], alpha=0.70, label="Empirical")
+    xr = np.linspace(residuals.min(), residuals.max(), 300)
+    axes[0].plot(xr, norm.pdf(xr, 0, NOISE_STD), color=C["true"], lw=2.0, label=f"N(0,{NOISE_STD})")
+    axes[0].set_title("Noise Distribution (Normal)")
+    axes[0].set_xlabel("Value")
+    axes[0].set_ylabel("Density")
+    axes[0].legend()
+    
+    axes[1].hist(y_noisy[~anom_mask], bins=60, density=True, color=C["clean"], alpha=0.65, label="Normal")
+    axes[1].hist(y_noisy[anom_mask], bins=30, density=True, color=C["anom"], alpha=0.65, label="Anomalies")
+    axes[1].set_title("Normal vs Anomalies")
+    axes[1].set_xlabel("Value")
+    axes[1].set_ylabel("Density")
+    axes[1].legend()
+
+    plt.tight_layout()
+    path = os.path.join(OUTPUT_DIR, fname)
+    plt.savefig(path)
+    plt.show()
 
 
 if __name__ == "__main__":

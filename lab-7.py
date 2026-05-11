@@ -3,12 +3,16 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 import matplotlib.ticker as mticker
+from matplotlib.colors import LinearSegmentedColormap
 from statsmodels.tsa.statespace.sarimax import SARIMAX
 from statsmodels.tsa.stattools import adfuller, acf, pacf
 from statsmodels.tsa.seasonal import seasonal_decompose
 from sklearn.linear_model import LinearRegression
 from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
-
+from sklearn.preprocessing import MinMaxScaler
+import tensorflow as tf
+from tensorflow import keras
+from tensorflow.keras import layers, callbacks
 
 SEP = "=" * 67
 
@@ -110,14 +114,26 @@ def main():
     arima = arima_res["ARIMA"]
     sarima = arima_res["SARIMA"]
     linear_reg = arima_res["LinearReg"]
+    n_test = arima_res["n_test"]
 
     print(f" ARIMA(1,1,1):  RMSE={arima['rmse']:>10,.2f}  R2={arima['r2']:.4f}  AIC={arima['fit'].aic:.1f}")
     print(f" SARIMA(1,1,1)(1,0,1,4): RMSE={sarima['rmse']:>10,.2f}  R2={sarima['r2']:.4f}  AIC={sarima['fit'].aic:.1f}")
     print(f" Linear Regression (baseline): RMSE={linear_reg['rmse']:>10,.2f}  R2={linear_reg['r2']:.4f}")
-    print(f"\n  Прогноз ({arima_res['best_key']}) на 3 місяці вперед:")
+    
+    print(f"\n  Forecast ({arima_res['best_key']}) 3 months ahead:")
     idx = pd.date_range(arima_res["ts_pos"].index[-1] + pd.DateOffset(months=1), periods=3, freq="MS")
     for d, v in zip(idx, arima_res["forecast_3m"][-3:]):
-        print(f"    {d.strftime('%Y-%m')}: ${v:>10,.2f}")
+        print(f"  {d.strftime('%Y-%m')}: ${v:>10,.2f}")
+
+
+    print(f"\n{SEP}")
+    ann_res = fit_ann(monthly, n_test)
+    print(f"\n  Architecture |  RMSE      |  R2")
+    for arch in ["MLP", "LSTM"]:
+        print(f"  {arch:<12} | {ann_res[arch]['rmse']:>10,.2f} | {ann_res[arch]['r2']:.4f}")
+
+    print(f"\n  Best ANN-architecture: {ann_res['best']}")
+
 
 
     plot_monthly_revenue_stacked(monthly, "l7_monthly_revenue.png")
@@ -134,6 +150,14 @@ def main():
     
     plot_arima_forecast(arima_res, "l7_arima_forecast.png")
 
+    plot_ann_learning_curve(ann_res, "MLP", "l7_mlp_learning.png")
+    plot_ann_learning_curve(ann_res, "LSTM", "l7_lstm_learning.png")
+    plot_ann_forecast(ann_res, "MLP", monthly, "l7_mlp_forecast.png")
+    plot_ann_forecast(ann_res, "LSTM", monthly, "l7_lstm_forecast.png")
+    plot_models_rmse_comparison(arima_res, ann_res, "l7_models_comparison.png")
+
+    plot_manager_month_heatmap(df, "l7_manager_month_heatmap.png")
+    plot_top_customers(customers, "l7_top_customers.png")
 
 
 def load_and_clean():
@@ -312,12 +336,76 @@ def fit_arima(monthly: pd.DataFrame):
     return results
 
 
+WINDOW = 4
+
+def make_sequences(arr: np.ndarray, w: int):
+    X, y = [], []
+    for i in range(len(arr) - w):
+        X.append(arr[i:i+w])
+        y.append(arr[i+w])
+    return np.array(X), np.array(y)
 
 
+def train_ann(ts_values: np.ndarray, n_test: int, arch: str):
+    scaler = MinMaxScaler(feature_range=(0,1))
+    ts_sc = scaler.fit_transform(ts_values.reshape(-1,1)).ravel()
+
+    X, y = make_sequences(ts_sc, WINDOW)
+    X_train, y_train = X[:-n_test], y[:-n_test]
+    X_test, y_test = X[-n_test:], y[-n_test:]
+
+    X_train_3d = X_train[:, :, np.newaxis]
+    X_test_3d = X_test[:, :, np.newaxis]
+
+    if arch == "MLP":
+        model = keras.Sequential([
+            keras.Input(shape=(WINDOW,)),
+            layers.Dense(32, activation="relu"),
+            layers.BatchNormalization(),
+            layers.Dense(16, activation="relu"),
+            layers.Dense(1),
+        ], name="MLP")
+        Xtr, Xte = X_train, X_test
+    else: 
+        model = keras.Sequential([
+            keras.Input(shape=(WINDOW,1)),
+            layers.LSTM(32, return_sequences=True),
+            layers.LSTM(16),
+            layers.Dense(8, activation="relu"),
+            layers.Dense(1),
+        ], name="LSTM")
+        Xtr, Xte = X_train_3d, X_test_3d
+
+    model.compile(optimizer=keras.optimizers.Adam(1e-3), loss="mse")
+    cb = [callbacks.EarlyStopping(patience=20, restore_best_weights=True, verbose=0)]
+    hist = model.fit(Xtr, y_train, epochs=200, batch_size=4, validation_split=0.2, callbacks=cb, verbose=0)
+
+    pred_sc = model.predict(Xte, verbose=0).ravel()
+    pred = scaler.inverse_transform(pred_sc.reshape(-1,1)).ravel()
+    true = scaler.inverse_transform(y_test.reshape(-1,1)).ravel()
+    rmse = np.sqrt(mean_squared_error(true, pred))
+    r2 = r2_score(true, pred)
+
+    return dict(model=model, hist=hist, pred=pred, true=true,
+                rmse=rmse, r2=r2, scaler=scaler,
+                X_train=Xtr, y_train=y_train)
 
 
+def fit_ann(monthly: pd.DataFrame, n_test: int):
+    ts = monthly.set_index("YearMonth")["Revenue"]
+    ts.index = ts.index.to_timestamp()
+    ts_pos = ts[ts > 0].values
 
+    results = {}
+    for arch in ["MLP", "LSTM"]:
+        r = train_ann(ts_pos, n_test, arch)
+        results[arch] = r
 
+    best = min(results, key=lambda k: results[k]["rmse"])
+    results["best"] = best
+    results["ts_pos"] = ts_pos
+    results["n_test"] = n_test
+    return results
 
 
 def fmt_usd(x, _=None):
@@ -588,9 +676,123 @@ def plot_arima_forecast(arima_res, fname):
     plt.show()
 
 
+def plot_ann_learning_curve(ann_res, architecture, fname):
+    fig, ax = plt.subplots(figsize=(10, 6), facecolor=C["bg"])
+    
+    r_ = ann_res[architecture]
+    hist = r_["hist"]
+    ep = range(1, len(hist.history["loss"]) + 1)
+    
+    ax.plot(ep, hist.history["loss"], color=C["c2"], lw=1.8, label="Train")
+    ax.plot(ep, hist.history["val_loss"], color=C["c3"], lw=1.8, ls="--", label="Validation")
+    
+    set_axis_style(ax, f"{architecture}: Learning Curve (MSE Loss)", "Epoch", "Loss")
+    ax.legend(facecolor=C["panel"], edgecolor=C["grid"], labelcolor=C["text"])
+    
+    plt.tight_layout()
+    path = os.path.join(OUTPUT_DIR, fname)
+    plt.savefig(path)
+    plt.show()
 
 
+def plot_ann_forecast(ann_res, architecture, monthly, fname):
+    fig, ax = plt.subplots(figsize=(12, 6), facecolor=C["bg"])
+    
+    ts_obj = monthly.set_index("YearMonth")["Revenue"]
+    ts_obj.index = ts_obj.index.to_timestamp()
+    ts_obj = ts_obj[ts_obj > 0]
+    
+    r_ = ann_res[architecture]
+    n_show = len(r_["true"])
+    idx = ts_obj.index[-n_show:]
+    
+    ax.plot(idx, r_["true"], color=C["c0"], lw=2.0, marker="o", ms=6, label="Actual")
+    ax.plot(idx, r_["pred"], color=C["c1"], lw=2.0, ls="--", marker="s", ms=6, label=f"{architecture} (R2={r_['r2']:.4f})")
+    ax.fill_between(idx, r_["true"], r_["pred"], alpha=0.15, color=C["c3"])
+    
+    ax.yaxis.set_major_formatter(mticker.FuncFormatter(fmt_usd))
+    set_axis_style(ax, f"{architecture}: Forecast vs Actual (Test)", "Date", "$")
+    ax.legend(facecolor=C["panel"], edgecolor=C["grid"], labelcolor=C["text"])
+    
+    plt.tight_layout()
+    path = os.path.join(OUTPUT_DIR, fname)
+    plt.savefig(path)
+    plt.show()
 
+
+def plot_models_rmse_comparison(arima_res, ann_res, fname):
+    fig, ax = plt.subplots(figsize=(12, 6), facecolor=C["bg"])
+    
+    all_methods = {}
+    for k in ["ARIMA", "SARIMA", "LinearReg"]:
+        if k in arima_res:
+            all_methods[k] = {"rmse": arima_res[k]["rmse"], "r2": arima_res[k]["r2"]}
+    for k in ["MLP", "LSTM"]:
+        all_methods[k] = {"rmse": ann_res[k]["rmse"], "r2": ann_res[k]["r2"]}
+    
+    names_all = list(all_methods.keys())
+    rmses_all = [all_methods[k]["rmse"] for k in names_all]
+    best_all = names_all[np.argmin(rmses_all)]
+    
+    clrs_all = [C["best"] if n == best_all else PAL8[i % len(PAL8)] for i, n in enumerate(names_all)]
+    
+    bars = ax.bar(names_all, rmses_all, color=clrs_all, alpha=0.85, edgecolor=C["grid"])
+    for bar, v in zip(bars, rmses_all):
+        ax.text(bar.get_x() + bar.get_width()/2, bar.get_height() + 200, f"${v:,.0f}", ha="center", va="bottom", color=C["text"])
+    
+    ax.yaxis.set_major_formatter(mticker.FuncFormatter(fmt_usd))
+    set_axis_style(ax, "RMSE Comparison: ARIMA vs ANN", "", "RMSE ($)")
+
+    plt.tight_layout()
+    path = os.path.join(OUTPUT_DIR, fname)
+    plt.savefig(path)
+    plt.show()
+
+
+def plot_manager_month_heatmap(df, fname):
+    fig, ax = plt.subplots(figsize=(14, 8), facecolor=C["bg"])
+    cmap_heat = LinearSegmentedColormap.from_list("rev", ["#0D1117", "#1565C0", "#FF8F00", "#E53935"])
+    
+    emp_short = {n: n.split()[-1] for n in df["EmployeeName"].unique()}
+    df["EmpShort"] = df["EmployeeName"].map(emp_short)
+    
+    pivot_em = (df.groupby(["EmpShort", df["OrderDate"].dt.month])["Revenue"].sum().unstack(fill_value=0))
+    im2 = ax.imshow(pivot_em.values, cmap=cmap_heat, aspect="auto")
+    
+    ax.set_xticks(range(12))
+    ax.set_xticklabels([f"M{m+1}" for m in range(12)], color=C["text"])
+    ax.set_yticks(range(len(pivot_em.index)))
+    ax.set_yticklabels(pivot_em.index.tolist(), color=C["text"])
+    
+    plt.colorbar(im2, ax=ax, fraction=0.04)
+    set_axis_style(ax, "Manager * Month (Revenue $)")
+    
+    plt.tight_layout()
+    path = os.path.join(OUTPUT_DIR, fname)
+    plt.savefig(path)
+    plt.show()
+
+
+def plot_top_customers(customers, fname):
+    fig, ax = plt.subplots(figsize=(12, 8), facecolor=C["bg"])
+    
+    top15 = customers.head(15)
+    short_cust = [n.split()[-1] for n in top15.index]
+    abc_clr = {"A": C["best"], "B": C["gold"], "C": C["worst"]}
+    bar_colors = [abc_clr.get(str(top15.iloc[i]["ABC"]), C["c0"]) for i in range(len(top15))]
+    
+    ax.barh(short_cust[::-1], top15["Revenue"].values[::-1], color=bar_colors[::-1], alpha=0.85, edgecolor=C["grid"])
+    
+    ax.xaxis.set_major_formatter(mticker.FuncFormatter(fmt_usd))
+    set_axis_style(ax, "Top-15 Customers", "$", "")
+    
+    handles = [plt.Rectangle((0, 0), 1, 1, color=abc_clr[k], alpha=0.85) for k in ["A", "B", "C"]]
+    ax.legend(handles, ["A (80%)", "B (15%)", "C (5%)"], facecolor=C["panel"], edgecolor=C["grid"], labelcolor=C["text"])
+
+    plt.tight_layout()
+    path = os.path.join(OUTPUT_DIR, fname)
+    plt.savefig(path)
+    plt.show()
 
 
 if __name__ == "__main__":

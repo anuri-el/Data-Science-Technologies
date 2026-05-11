@@ -8,7 +8,7 @@ from statsmodels.tsa.statespace.sarimax import SARIMAX
 from statsmodels.tsa.stattools import adfuller, acf, pacf
 from statsmodels.tsa.seasonal import seasonal_decompose
 from sklearn.linear_model import LinearRegression
-from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
+from sklearn.metrics import mean_squared_error, r2_score
 from sklearn.preprocessing import MinMaxScaler
 import tensorflow as tf
 from tensorflow import keras
@@ -48,9 +48,11 @@ def main():
     print(f"Unique products: {df['ProductName'].nunique()}")
     print(f"Counties: {df['CustomerCountry'].nunique()}")
     print(f"Employees: {df['EmployeeName'].nunique()}")
-    print(f"Paid: {df['IsPaid'].sum()} ({df['IsPaid'].mean()*100:.1f}%) / Not paid: {(~df['IsPaid']).sum()}")
 
-    print(f"\nRevenue: mu={df['Revenue'].mean():.2f} | std={df['Revenue'].std():.2f} | min={df['Revenue'].min():.2f} | max={df['Revenue'].max():.2f}")
+    paid_n = df["IsPaid"].sum()
+    unpaid_n = (~df["IsPaid"]).sum()
+    print(f"Paid: {paid_n} ({df['IsPaid'].mean()*100:.1f}%)  /  Not paid: {unpaid_n}")
+    print(f"\nRevenue: mean={df['Revenue'].mean():.2f} | std={df['Revenue'].std():.2f} | min={df['Revenue'].min():.2f} | max={df['Revenue'].max():.2f}")
     
 
     print(f"\n{SEP}")
@@ -72,7 +74,7 @@ def main():
     products = kpi["products"]
     customers = kpi["customers"]
     
-    print(f"\n  Ефективність менеджерів:")
+    print(f"\n  Employee performance:")
     print(f"  {'Employee':<22} {'Revenue':>12} {'Orders':>8} {'AvgOrder':>10} {'Customers':>8} {'Paid%':>8}")
     for name, r in employees.iterrows():
         print(f"  {name:<22} {r['Revenue']:>12,.0f} {int(r['Orders']):>8} {r['AvgOrder']:>10,.1f} {int(r['Customers']):>8} {r['PaidPct']:>7.1f}%")
@@ -87,7 +89,7 @@ def main():
 
     unpaid_rev = df[~df["IsPaid"]]["Revenue"].sum()
     total_rev = df["Revenue"].sum()
-    print(f"Risk (unpaid revenue):")
+    print(f"Payment risk:")
     print(f"Paid: ${df[df['IsPaid']]['Revenue'].sum():>12,.2f} ({df['IsPaid'].mean()*100:.1f}%)")
     print(f"Not Paid: ${unpaid_rev:>12,.2f} ({unpaid_rev/total_rev*100:.1f}%)")
 
@@ -96,35 +98,37 @@ def main():
     decomp_res = decompose_series(monthly)
     ts = decomp_res["ts"]
 
-    print(f"\nADF test for stationarity:")
-    print(f"  Statistic: {decomp_res['adf_stat']:.4f}  p-value: {decomp_res['adf_p']:.4f}")
-    print(f"  Conclusion: {'Stationary' if decomp_res['adf_p'] < 0.05 else 'Non-stationary'} series")
-
-    print(f"\nADF after 1st differencing:")
-    print(f"  Statistic: {decomp_res['adf2']:.4f}  p-value: {decomp_res['p2']:.4f}")
-    print(f"  Conclusion: {'Stationary' if decomp_res['p2'] < 0.05 else 'Non-stationary'} series")
-
-    print(f"\nACF (lags 1-5):  {[f'{v:.3f}' for v in decomp_res['acf'][1:6]]}")
+    print(f"\nADF test - original series:")
+    print(f"  Statistic: {decomp_res['adf_stat']:.4f}   p-value: {decomp_res['adf_p']:.4f}")
+    print(f"  {'Stationary' if decomp_res['adf_p'] < 0.05 else 'Non-stationary'}")
+ 
+    print(f"\nADF - 1st difference:")
+    print(f"  Statistic: {decomp_res['adf2']:.4f}   p-value: {decomp_res['p2']:.4f}")
+    print(f"  {'Stationary' if decomp_res['p2'] < 0.05 else 'Non-stationary'}")
+ 
+    print(f"\nACF (lags 1-5): {[f'{v:.3f}' for v in decomp_res['acf'][1:6]]}")
     print(f"PACF (lags 1-5): {[f'{v:.3f}' for v in decomp_res['pacf'][1:6]]}")
-
-
+    
     print(f"\n{SEP}")
     arima_res = fit_arima(monthly)
 
-    arima = arima_res["ARIMA"]
-    sarima = arima_res["SARIMA"]
-    linear_reg = arima_res["LinearReg"]
-    n_test = arima_res["n_test"]
-
-    print(f" ARIMA(1,1,1):  RMSE={arima['rmse']:>10,.2f}  R2={arima['r2']:.4f}  AIC={arima['fit'].aic:.1f}")
-    print(f" SARIMA(1,1,1)(1,0,1,4): RMSE={sarima['rmse']:>10,.2f}  R2={sarima['r2']:.4f}  AIC={sarima['fit'].aic:.1f}")
-    print(f" Linear Regression (baseline): RMSE={linear_reg['rmse']:>10,.2f}  R2={linear_reg['r2']:.4f}")
+    print(f"\n  {'Model':<35} {'RMSE':>10}  {'R2':>8}  {'AIC':>8}")
+    for key in ["ARIMA", "SARIMA", "LinearReg"]:
+        if key not in arima_res:
+            continue
+        r_ = arima_res[key]
+        aic_str = f"{r_['aic']:.1f}" if "aic" in r_ else "  –"
+        print(f"  {key:<35} {r_['rmse']:>10,.2f}  {r_['r2']:>8.4f}  {aic_str:>8}")
+ 
+    if "forecast_3m" in arima_res:
+        print(f"\n  Forecast ({arima_res['best_key']}) – 3 months ahead:")
+        idx = pd.date_range(
+            arima_res["ts_pos"].index[-1] + pd.DateOffset(months=1),
+            periods=3, freq="MS")
+        for d, v in zip(idx, arima_res["forecast_3m"]):
+            print(f"  {d.strftime('%Y-%m')}: ${v:>10,.2f}")
     
-    print(f"\n  Forecast ({arima_res['best_key']}) 3 months ahead:")
-    idx = pd.date_range(arima_res["ts_pos"].index[-1] + pd.DateOffset(months=1), periods=3, freq="MS")
-    for d, v in zip(idx, arima_res["forecast_3m"][-3:]):
-        print(f"  {d.strftime('%Y-%m')}: ${v:>10,.2f}")
-
+    n_test = arima_res["n_test"]
 
     print(f"\n{SEP}")
     ann_res = fit_ann(monthly, n_test)
@@ -146,7 +150,6 @@ def main():
 
     plot_time_series_with_trend(ts, "l7_time_series.png")
     plot_acf_pacf(ts, decomp_res, "l7_acf_pacf.png")
-    plot_decomposition_components(ts, decomp_res, "l7_decomposition.png")
     
     plot_arima_forecast(arima_res, "l7_arima_forecast.png")
 
@@ -154,7 +157,6 @@ def main():
     plot_ann_learning_curve(ann_res, "LSTM", "l7_lstm_learning.png")
     plot_ann_forecast(ann_res, "MLP", monthly, "l7_mlp_forecast.png")
     plot_ann_forecast(ann_res, "LSTM", monthly, "l7_lstm_forecast.png")
-    plot_models_rmse_comparison(arima_res, ann_res, "l7_models_comparison.png")
 
     plot_manager_month_heatmap(df, "l7_manager_month_heatmap.png")
     plot_top_customers(customers, "l7_top_customers.png")
@@ -176,7 +178,7 @@ def load_and_clean():
     df["DayOfWeek"] = df["OrderDate"].dt.day_name()
     df["WeekNo"] = df["OrderDate"].dt.isocalendar().week.astype(int)
 
-    df["IsPaid"] = df["Paid?"].str.strip().str.upper() == "YES"
+    df["IsPaid"] = df["Paid?"].astype(str).str.strip().str.upper() == "YES"
 
     df.drop_duplicates(inplace=True)
     df.dropna(subset=["Revenue", "OrderDate"], inplace=True)
@@ -184,33 +186,35 @@ def load_and_clean():
 
     q1, q3 = df["Revenue"].quantile(0.25), df["Revenue"].quantile(0.75)
     iqr = q3 - q1
-    anom = ((df["Revenue"] < q1 - 3*iqr) | (df["Revenue"] > q3 + 3*iqr))
+    anom = ((df["Revenue"] < q1 - 3 * iqr) | (df["Revenue"] > q3 + 3 * iqr))
     df["IsAnomaly"] = anom
 
     return df
 
 
 def build_olap(df: pd.DataFrame):
+    paid_agg = (df[df["IsPaid"]].groupby("YearMonth")["Revenue"]
+                                .sum()
+                                .rename("PaidRev"))
+
     monthly = (df.groupby("YearMonth")
                  .agg(Revenue=("Revenue", "sum"), 
                       Orders=("Revenue", "count"), 
                       AvgOrder=("Revenue", "mean"), 
-                      Customers=("CustomerID", "nunique"),
-                      PaidRev=("Revenue", lambda x: x[df.loc[x.index, "IsPaid"]].sum()))
+                      Customers=("CustomerID", "nunique"))
+                 .join(paid_agg, how="left")
+                 .fillna({"PaidRev": 0})
                  .reset_index()
                  .sort_values("YearMonth"))
-    monthly["YM_str"] = monthly["YearMonth"].astype(str)
     monthly["UnpaidRev"] = monthly["Revenue"] - monthly["PaidRev"]
-    monthly["PaidPct"] = monthly["PaidRev"] / monthly["Revenue"] * 100
+    monthly["PaidPct"] = (monthly["PaidRev"] / monthly["Revenue"] * 100).fillna(0)
 
     full_idx = pd.period_range(monthly["YearMonth"].min(), monthly["YearMonth"].max(), freq="M")
-    monthly = monthly.set_index("YearMonth").reindex(full_idx)
-
-    num_cols = ["Revenue", "Orders", "AvgOrder", "Customers", "PaidRev", "UnpaidRev", "PaidPct"]
-    for col in num_cols:
-        if col in monthly.columns:
-            monthly[col] = monthly[col].fillna(0)
-    monthly = monthly.reset_index().rename(columns={"index": "YearMonth"})
+    monthly = (monthly.set_index("YearMonth")
+                      .reindex(full_idx)
+                      .fillna(0)
+                      .reset_index()
+                      .rename(columns={"index": "YearMonth"}))
     monthly["YM_str"] = monthly["YearMonth"].astype(str)
     
 
@@ -264,10 +268,15 @@ def compute_kpi(df: pd.DataFrame):
 def decompose_series(monthly: pd.DataFrame):
     ts = monthly.set_index("YearMonth")["Revenue"]
     ts.index = ts.index.to_timestamp()
+    ts = ts.asfreq("MS")
 
-    adf_stat, adf_p, *_ = adfuller(ts[ts > 0].values)
+    pos_vals = ts[ts > 0].values
+    pos_idx  = pd.date_range(ts[ts > 0].index[0], periods=len(pos_vals), freq="MS")
+    ts_clean = pd.Series(pos_vals, index=pos_idx)
+    
+    adf_stat, adf_p, *_ = adfuller(ts_clean.values)
 
-    ts_diff = ts.diff().dropna()
+    ts_diff = ts_clean.diff().dropna()
     adf2, p2, *_ = adfuller(ts_diff.values)
 
     try:
@@ -275,9 +284,10 @@ def decompose_series(monthly: pd.DataFrame):
     except Exception:
         decomp = None
 
-    ts_vals = ts.values
-    acf_vals = acf(ts_vals,  nlags=10, fft=False)
-    pacf_vals = pacf(ts_vals, nlags=10, method="ols")
+    n_lags = min(9, len(ts_clean) // 2 - 1)
+    ts_vals = ts_clean.values
+    acf_vals = acf(ts_vals, nlags=n_lags, fft=False)
+    pacf_vals = pacf(ts_vals, nlags=n_lags, method="ols")
 
     return dict(ts=ts, adf_stat=adf_stat, adf_p=adf_p, 
                 ts_diff=ts_diff, adf2=adf2, p2=p2,
@@ -285,54 +295,60 @@ def decompose_series(monthly: pd.DataFrame):
 
 
 def fit_arima(monthly: pd.DataFrame):
-    ts = monthly.set_index("YearMonth")["Revenue"]
-    ts.index = ts.index.to_timestamp()
-    ts_pos = ts[ts > 0].copy()
+    ts_full = monthly.set_index("YearMonth")["Revenue"]
+    ts_full.index = ts_full.index.to_timestamp()
+    ts_full = ts_full.asfreq("MS")
 
+    pos_mask = ts_full > 0
+    ts_pos_vals = ts_full[pos_mask].values
+    pos_dates = ts_full[pos_mask].index
+
+    new_idx = pd.date_range(pos_dates[0], periods=len(pos_dates), freq="MS")
+    ts_pos  = pd.Series(ts_pos_vals, index=new_idx, name="Revenue")
+ 
     n_test = 4
     train = ts_pos.iloc[:-n_test]
     test = ts_pos.iloc[-n_test:]
-
+    test_vals = test.values
+ 
     results = {}
 
     try:
         arima = SARIMAX(train, order=(1,1,1), enforce_stationarity=False, enforce_invertibility=False)
         arima_fit = arima.fit(disp=False)
-        pred_a = arima_fit.forecast(n_test)
-        rmse_a = np.sqrt(mean_squared_error(test, pred_a))
-        r2_a = r2_score(test, pred_a)
-        results["ARIMA"] = dict(fit=arima_fit, pred=pred_a, rmse=rmse_a, r2=r2_a, aic=arima_fit.aic)
+        pred_a = arima_fit.forecast(n_test).values
+        rmse_a = np.sqrt(mean_squared_error(test_vals, pred_a))
+        r2_a = r2_score(test_vals, pred_a)
+        results["ARIMA"] = dict(fit=arima_fit, pred=pd.Series(pred_a, index=test.index), rmse=rmse_a, r2=r2_a, aic=arima_fit.aic)
     except Exception as e:
         print(f"  ARIMA: {e}")
 
     try:
         sarima = SARIMAX(train, order=(1,1,1), seasonal_order=(1,0,1,4), enforce_stationarity=False, enforce_invertibility=False)
         sarima_fit = sarima.fit(disp=False)
-        pred_s = sarima_fit.forecast(n_test)
-        rmse_s = np.sqrt(mean_squared_error(test, pred_s))
-        r2_s = r2_score(test, pred_s)
-        results["SARIMA"] = dict(fit=sarima_fit, pred=pred_s, rmse=rmse_s, r2=r2_s, aic=sarima_fit.aic)
+        pred_s = sarima_fit.forecast(n_test).values
+        rmse_s = np.sqrt(mean_squared_error(test_vals, pred_s))
+        r2_s = r2_score(test_vals, pred_s)
+        results["SARIMA"] = dict(fit=sarima_fit, pred=pd.Series(pred_s, index=test.index), rmse=rmse_s, r2=r2_s, aic=sarima_fit.aic)
     except Exception as e:
         print(f"  SARIMA: {e}")
 
     X_all = np.arange(len(ts_pos)).reshape(-1,1)
     lr = LinearRegression().fit(X_all[:len(train)], train.values)
     pred_lr = lr.predict(X_all[len(train):len(train)+n_test])
-    rmse_lr = np.sqrt(mean_squared_error(test, pred_lr))
-    r2_lr = r2_score(test, pred_lr)
+    rmse_lr = np.sqrt(mean_squared_error(test_vals, pred_lr))
+    r2_lr = r2_score(test_vals, pred_lr)
     results["LinearReg"] = dict(pred=pred_lr, rmse=rmse_lr, r2=r2_lr)
 
-    best_key = min([k for k in results if k != "LinearReg"], key=lambda k: results[k]["rmse"], default="ARIMA")
-    if best_key in results:
-        best_fit = results[best_key]["fit"]
-        forecast_3 = best_fit.forecast(n_test + 3)
-        results["forecast_3m"] = forecast_3[-3:]
+    candidates = {k: v for k, v in results.items() if k != "LinearReg"}
+    if candidates:
+        best_key = min(candidates, key=lambda k: candidates[k]["rmse"])
+        best_fit = candidates[best_key]["fit"]
+        forecast_full = best_fit.forecast(n_test + 3)
+        results["forecast_3m"] = forecast_full[-3:].values
         results["best_key"] = best_key
 
-    results["train"] = train
-    results["test"] = test
-    results["ts_pos"]= ts_pos
-    results["n_test"]= n_test
+    results.update(train=train, test=test, ts_pos=ts_pos, n_test=n_test)
     return results
 
 
@@ -360,30 +376,33 @@ def train_ann(ts_values: np.ndarray, n_test: int, arch: str):
     if arch == "MLP":
         model = keras.Sequential([
             keras.Input(shape=(WINDOW,)),
+            layers.Dense(64, activation="relu"),
+            layers.Dropout(0.2),
             layers.Dense(32, activation="relu"),
-            layers.BatchNormalization(),
-            layers.Dense(16, activation="relu"),
+            layers.Dropout(0.1),
             layers.Dense(1),
         ], name="MLP")
         Xtr, Xte = X_train, X_test
     else: 
         model = keras.Sequential([
-            keras.Input(shape=(WINDOW,1)),
-            layers.LSTM(32, return_sequences=True),
-            layers.LSTM(16),
-            layers.Dense(8, activation="relu"),
+            keras.Input(shape=(WINDOW, 1)),
+            layers.LSTM(64, return_sequences=True),
+            layers.Dropout(0.2),
+            layers.LSTM(32),
+            layers.Dense(16, activation="relu"),
             layers.Dense(1),
         ], name="LSTM")
         Xtr, Xte = X_train_3d, X_test_3d
 
-    model.compile(optimizer=keras.optimizers.Adam(1e-3), loss="mse")
-    cb = [callbacks.EarlyStopping(patience=20, restore_best_weights=True, verbose=0)]
-    hist = model.fit(Xtr, y_train, epochs=200, batch_size=4, validation_split=0.2, callbacks=cb, verbose=0)
+    model.compile(optimizer=keras.optimizers.Adam(5e-4), loss="mse")
+    cb = [callbacks.EarlyStopping(patience=30, restore_best_weights=True, verbose=0, min_delta=1e-6)]
+    hist = model.fit(Xtr, y_train, epochs=500, batch_size=4, validation_split=0.2, callbacks=cb, verbose=0)
 
     pred_sc = model.predict(Xte, verbose=0).ravel()
     pred = scaler.inverse_transform(pred_sc.reshape(-1,1)).ravel()
     true = scaler.inverse_transform(y_test.reshape(-1,1)).ravel()
-    rmse = np.sqrt(mean_squared_error(true, pred))
+
+    rmse = float(np.sqrt(mean_squared_error(np.asarray(true), np.asarray(pred))))
     r2 = r2_score(true, pred)
 
     return dict(model=model, hist=hist, pred=pred, true=true,
@@ -396,13 +415,9 @@ def fit_ann(monthly: pd.DataFrame, n_test: int):
     ts.index = ts.index.to_timestamp()
     ts_pos = ts[ts > 0].values
 
-    results = {}
-    for arch in ["MLP", "LSTM"]:
-        r = train_ann(ts_pos, n_test, arch)
-        results[arch] = r
+    results = {arch: train_ann(ts_pos, n_test, arch) for arch in ["MLP", "LSTM"]}
 
-    best = min(results, key=lambda k: results[k]["rmse"])
-    results["best"] = best
+    results["best"] = min(results, key=lambda k: results[k]["rmse"])
     results["ts_pos"] = ts_pos
     results["n_test"] = n_test
     return results
@@ -617,29 +632,6 @@ def plot_acf_pacf(ts, decomp_res, fname):
     plt.show()
 
 
-def plot_decomposition_components(ts, decomp_res, fname):
-    if decomp_res["decomp"] is None:
-        return None
-    
-    dec = decomp_res["decomp"]
-    fig, axes = plt.subplots(1, 3, figsize=(18, 5), facecolor=C["bg"])
-    
-    components = [dec.trend, dec.seasonal, dec.resid]
-    titles = ["Trend", "Seasonality", "Residuals"]
-    colors = [C["c2"], C["c3"], C["c4"]]
-    
-    for ax, comp, title, color_k in zip(axes, components, titles, colors):
-        ax.plot(ts.index, comp.values, color=color_k, lw=1.8, alpha=0.85)
-        ax.axhline(0, color=C["sub"], lw=0.8, ls="--", alpha=0.5)
-        set_axis_style(ax, f"Decomposition: {title}", "Date", "$")
-        ax.yaxis.set_major_formatter(mticker.FuncFormatter(fmt_usd))
-
-    plt.tight_layout()
-    path = os.path.join(OUTPUT_DIR, fname)
-    plt.savefig(path)
-    plt.show()
-
-
 def plot_arima_forecast(arima_res, fname):
     fig, ax = plt.subplots(figsize=(14, 6), facecolor=C["bg"])
     
@@ -714,35 +706,6 @@ def plot_ann_forecast(ann_res, architecture, monthly, fname):
     set_axis_style(ax, f"{architecture}: Forecast vs Actual (Test)", "Date", "$")
     ax.legend(facecolor=C["panel"], edgecolor=C["grid"], labelcolor=C["text"])
     
-    plt.tight_layout()
-    path = os.path.join(OUTPUT_DIR, fname)
-    plt.savefig(path)
-    plt.show()
-
-
-def plot_models_rmse_comparison(arima_res, ann_res, fname):
-    fig, ax = plt.subplots(figsize=(12, 6), facecolor=C["bg"])
-    
-    all_methods = {}
-    for k in ["ARIMA", "SARIMA", "LinearReg"]:
-        if k in arima_res:
-            all_methods[k] = {"rmse": arima_res[k]["rmse"], "r2": arima_res[k]["r2"]}
-    for k in ["MLP", "LSTM"]:
-        all_methods[k] = {"rmse": ann_res[k]["rmse"], "r2": ann_res[k]["r2"]}
-    
-    names_all = list(all_methods.keys())
-    rmses_all = [all_methods[k]["rmse"] for k in names_all]
-    best_all = names_all[np.argmin(rmses_all)]
-    
-    clrs_all = [C["best"] if n == best_all else PAL8[i % len(PAL8)] for i, n in enumerate(names_all)]
-    
-    bars = ax.bar(names_all, rmses_all, color=clrs_all, alpha=0.85, edgecolor=C["grid"])
-    for bar, v in zip(bars, rmses_all):
-        ax.text(bar.get_x() + bar.get_width()/2, bar.get_height() + 200, f"${v:,.0f}", ha="center", va="bottom", color=C["text"])
-    
-    ax.yaxis.set_major_formatter(mticker.FuncFormatter(fmt_usd))
-    set_axis_style(ax, "RMSE Comparison: ARIMA vs ANN", "", "RMSE ($)")
-
     plt.tight_layout()
     path = os.path.join(OUTPUT_DIR, fname)
     plt.savefig(path)

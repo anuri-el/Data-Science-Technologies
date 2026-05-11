@@ -3,9 +3,12 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 import matplotlib.ticker as mticker
+from statsmodels.tsa.statespace.sarimax import SARIMAX
 from statsmodels.tsa.stattools import adfuller, acf, pacf
 from statsmodels.tsa.seasonal import seasonal_decompose
 from sklearn.linear_model import LinearRegression
+from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
+
 
 SEP = "=" * 67
 
@@ -101,6 +104,22 @@ def main():
     print(f"PACF (lags 1-5): {[f'{v:.3f}' for v in decomp_res['pacf'][1:6]]}")
 
 
+    print(f"\n{SEP}")
+    arima_res = fit_arima(monthly)
+
+    arima = arima_res["ARIMA"]
+    sarima = arima_res["SARIMA"]
+    linear_reg = arima_res["LinearReg"]
+
+    print(f" ARIMA(1,1,1):  RMSE={arima['rmse']:>10,.2f}  R2={arima['r2']:.4f}  AIC={arima['fit'].aic:.1f}")
+    print(f" SARIMA(1,1,1)(1,0,1,4): RMSE={sarima['rmse']:>10,.2f}  R2={sarima['r2']:.4f}  AIC={sarima['fit'].aic:.1f}")
+    print(f" Linear Regression (baseline): RMSE={linear_reg['rmse']:>10,.2f}  R2={linear_reg['r2']:.4f}")
+    print(f"\n  Прогноз ({arima_res['best_key']}) на 3 місяці вперед:")
+    idx = pd.date_range(arima_res["ts_pos"].index[-1] + pd.DateOffset(months=1), periods=3, freq="MS")
+    for d, v in zip(idx, arima_res["forecast_3m"][-3:]):
+        print(f"    {d.strftime('%Y-%m')}: ${v:>10,.2f}")
+
+
     plot_monthly_revenue_stacked(monthly, "l7_monthly_revenue.png")
     plot_top_countries(countries, "l7_top_countries.png")
     plot_manager_revenue(employees, "l7_manager_revenue.png")
@@ -113,6 +132,7 @@ def main():
     plot_acf_pacf(ts, decomp_res, "l7_acf_pacf.png")
     plot_decomposition_components(ts, decomp_res, "l7_decomposition.png")
     
+    plot_arima_forecast(arima_res, "l7_arima_forecast.png")
 
 
 
@@ -238,6 +258,58 @@ def decompose_series(monthly: pd.DataFrame):
     return dict(ts=ts, adf_stat=adf_stat, adf_p=adf_p, 
                 ts_diff=ts_diff, adf2=adf2, p2=p2,
                 decomp=decomp, acf=acf_vals, pacf=pacf_vals)
+
+
+def fit_arima(monthly: pd.DataFrame):
+    ts = monthly.set_index("YearMonth")["Revenue"]
+    ts.index = ts.index.to_timestamp()
+    ts_pos = ts[ts > 0].copy()
+
+    n_test = 4
+    train = ts_pos.iloc[:-n_test]
+    test = ts_pos.iloc[-n_test:]
+
+    results = {}
+
+    try:
+        arima = SARIMAX(train, order=(1,1,1), enforce_stationarity=False, enforce_invertibility=False)
+        arima_fit = arima.fit(disp=False)
+        pred_a = arima_fit.forecast(n_test)
+        rmse_a = np.sqrt(mean_squared_error(test, pred_a))
+        r2_a = r2_score(test, pred_a)
+        results["ARIMA"] = dict(fit=arima_fit, pred=pred_a, rmse=rmse_a, r2=r2_a, aic=arima_fit.aic)
+    except Exception as e:
+        print(f"  ARIMA: {e}")
+
+    try:
+        sarima = SARIMAX(train, order=(1,1,1), seasonal_order=(1,0,1,4), enforce_stationarity=False, enforce_invertibility=False)
+        sarima_fit = sarima.fit(disp=False)
+        pred_s = sarima_fit.forecast(n_test)
+        rmse_s = np.sqrt(mean_squared_error(test, pred_s))
+        r2_s = r2_score(test, pred_s)
+        results["SARIMA"] = dict(fit=sarima_fit, pred=pred_s, rmse=rmse_s, r2=r2_s, aic=sarima_fit.aic)
+    except Exception as e:
+        print(f"  SARIMA: {e}")
+
+    X_all = np.arange(len(ts_pos)).reshape(-1,1)
+    lr = LinearRegression().fit(X_all[:len(train)], train.values)
+    pred_lr = lr.predict(X_all[len(train):len(train)+n_test])
+    rmse_lr = np.sqrt(mean_squared_error(test, pred_lr))
+    r2_lr = r2_score(test, pred_lr)
+    results["LinearReg"] = dict(pred=pred_lr, rmse=rmse_lr, r2=r2_lr)
+
+    best_key = min([k for k in results if k != "LinearReg"], key=lambda k: results[k]["rmse"], default="ARIMA")
+    if best_key in results:
+        best_fit = results[best_key]["fit"]
+        forecast_3 = best_fit.forecast(n_test + 3)
+        results["forecast_3m"] = forecast_3[-3:]
+        results["best_key"] = best_key
+
+    results["train"] = train
+    results["test"] = test
+    results["ts_pos"]= ts_pos
+    results["n_test"]= n_test
+    return results
 
 
 
@@ -478,6 +550,47 @@ def plot_decomposition_components(ts, decomp_res, fname):
     path = os.path.join(OUTPUT_DIR, fname)
     plt.savefig(path)
     plt.show()
+
+
+def plot_arima_forecast(arima_res, fname):
+    fig, ax = plt.subplots(figsize=(14, 6), facecolor=C["bg"])
+    
+    train_s = arima_res["train"]
+    test_s = arima_res["test"]
+    
+    ax.plot(train_s.index, train_s.values, color=C["c0"], lw=1.8, label="Train", marker="o", ms=4)
+    ax.plot(test_s.index, test_s.values, color=C["c2"], lw=2.0, label="Actual (Test)", marker="s", ms=6, zorder=5)
+    
+    method_styles = {"ARIMA": "--", "SARIMA": "-.", "LinearReg": ":"}
+    method_colors = {"ARIMA": C["c1"], "SARIMA": C["c3"], "LinearReg": C["c5"]}
+    
+    for mkey in ["ARIMA", "SARIMA", "LinearReg"]:
+        if mkey in arima_res:
+            r_ = arima_res[mkey]
+            pred_idx = test_s.index if isinstance(r_["pred"], pd.Series) else test_s.index[:len(r_["pred"])]
+            pred_vals = r_["pred"].values if isinstance(r_["pred"], pd.Series) else r_["pred"]
+            ax.plot(pred_idx, pred_vals, ls=method_styles[mkey], color=method_colors[mkey], lw=2.0, label=f"{mkey} (R2={r_['r2']:.3f})", marker="^", ms=5)
+    
+    if "forecast_3m" in arima_res:
+        last_date = test_s.index[-1]
+        fut_idx = pd.date_range(last_date + pd.DateOffset(months=1), periods=3, freq="MS")
+        ax.plot(fut_idx, arima_res["forecast_3m"], "o--", color=C["gold"], lw=2.2, ms=8, label="Forecast +3m", zorder=6)
+        ax.fill_between(fut_idx, arima_res["forecast_3m"] * 0.85, arima_res["forecast_3m"] * 1.15, alpha=0.12, color=C["gold"])
+    
+    ax.axvspan(test_s.index[0], test_s.index[-1], alpha=0.06, color=C["c2"])
+    ax.yaxis.set_major_formatter(mticker.FuncFormatter(fmt_usd))
+    set_axis_style(ax, "ARIMA/SARIMA Forecast vs Actual", "Date", "$")
+    ax.legend(facecolor=C["panel"], edgecolor=C["grid"], labelcolor=C["text"], ncol=3)
+
+    plt.tight_layout()
+    path = os.path.join(OUTPUT_DIR, fname)
+    plt.savefig(path)
+    plt.show()
+
+
+
+
+
 
 
 if __name__ == "__main__":

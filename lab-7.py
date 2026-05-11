@@ -3,7 +3,9 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 import matplotlib.ticker as mticker
-
+from statsmodels.tsa.stattools import adfuller, acf, pacf
+from statsmodels.tsa.seasonal import seasonal_decompose
+from sklearn.linear_model import LinearRegression
 
 SEP = "=" * 67
 
@@ -68,7 +70,6 @@ def main():
     for name, r in employees.iterrows():
         print(f"  {name:<22} {r['Revenue']:>12,.0f} {int(r['Orders']):>8} {r['AvgOrder']:>10,.1f} {int(r['Customers']):>8} {r['PaidPct']:>7.1f}%")
 
-
     n_A = (customers["ABC"]=="A").sum()
     n_B = (customers["ABC"]=="B").sum()
     n_C = (customers["ABC"]=="C").sum()
@@ -84,6 +85,22 @@ def main():
     print(f"Not Paid: ${unpaid_rev:>12,.2f} ({unpaid_rev/total_rev*100:.1f}%)")
 
 
+    print(f"\n{SEP}")
+    decomp_res = decompose_series(monthly)
+    ts = decomp_res["ts"]
+
+    print(f"\nADF test for stationarity:")
+    print(f"  Statistic: {decomp_res['adf_stat']:.4f}  p-value: {decomp_res['adf_p']:.4f}")
+    print(f"  Conclusion: {'Stationary' if decomp_res['adf_p'] < 0.05 else 'Non-stationary'} series")
+
+    print(f"\nADF after 1st differencing:")
+    print(f"  Statistic: {decomp_res['adf2']:.4f}  p-value: {decomp_res['p2']:.4f}")
+    print(f"  Conclusion: {'Stationary' if decomp_res['p2'] < 0.05 else 'Non-stationary'} series")
+
+    print(f"\nACF (lags 1-5):  {[f'{v:.3f}' for v in decomp_res['acf'][1:6]]}")
+    print(f"PACF (lags 1-5): {[f'{v:.3f}' for v in decomp_res['pacf'][1:6]]}")
+
+
     plot_monthly_revenue_stacked(monthly, "l7_monthly_revenue.png")
     plot_top_countries(countries, "l7_top_countries.png")
     plot_manager_revenue(employees, "l7_manager_revenue.png")
@@ -91,6 +108,11 @@ def main():
     plot_top_products(products, "l7_top_products.png")
     plot_abc_customer_pie(customers, "l7_abc_pie.png")
     plot_quarterly_revenue(quarterly, "l7_quarterly_revenue.png")
+
+    plot_time_series_with_trend(ts, "l7_time_series.png")
+    plot_acf_pacf(ts, decomp_res, "l7_acf_pacf.png")
+    plot_decomposition_components(ts, decomp_res, "l7_decomposition.png")
+    
 
 
 
@@ -195,6 +217,34 @@ def compute_kpi(df: pd.DataFrame):
     return dict(employees = emp, countries=country, products=product, customers=customers)
 
 
+def decompose_series(monthly: pd.DataFrame):
+    ts = monthly.set_index("YearMonth")["Revenue"]
+    ts.index = ts.index.to_timestamp()
+
+    adf_stat, adf_p, *_ = adfuller(ts[ts > 0].values)
+
+    ts_diff = ts.diff().dropna()
+    adf2, p2, *_ = adfuller(ts_diff.values)
+
+    try:
+        decomp = seasonal_decompose(ts, model="additive", period=4, extrapolate_trend="freq")
+    except Exception:
+        decomp = None
+
+    ts_vals = ts.values
+    acf_vals = acf(ts_vals,  nlags=10, fft=False)
+    pacf_vals = pacf(ts_vals, nlags=10, method="ols")
+
+    return dict(ts=ts, adf_stat=adf_stat, adf_p=adf_p, 
+                ts_diff=ts_diff, adf2=adf2, p2=p2,
+                decomp=decomp, acf=acf_vals, pacf=pacf_vals)
+
+
+
+
+
+
+
 
 
 
@@ -263,7 +313,6 @@ def plot_manager_revenue(employees, fname):
     for bar, v in zip(bars, employees["Revenue"].values):
         ax.text(bar.get_x() + bar.get_width()/2, bar.get_height() + 500, f"${v/1000:.0f}K", ha="center", va="bottom", color=C["text"])
     
-    # plt.setp(ax.xaxis.get_majorticklabels())
     ax.yaxis.set_major_formatter(mticker.FuncFormatter(fmt_usd))
     set_axis_style(ax, "Revenue by Manager")
     
@@ -359,6 +408,72 @@ def plot_quarterly_revenue(quarterly, fname):
     ax.yaxis.set_major_formatter(mticker.FuncFormatter(fmt_usd))
     set_axis_style(ax, "Quarterly Revenue", "Quarter")
     
+    plt.tight_layout()
+    path = os.path.join(OUTPUT_DIR, fname)
+    plt.savefig(path)
+    plt.show()
+
+
+def plot_time_series_with_trend(ts, fname):
+    fig, ax = plt.subplots(figsize=(14, 7), facecolor=C["bg"])
+    
+    ax.plot(ts.index, ts.values, color=C["c0"], lw=1.8, alpha=0.85, label="Monthly Revenue", marker="o", ms=5)
+    
+    x_num = np.arange(len(ts))
+    lr = LinearRegression().fit(x_num.reshape(-1, 1), ts.values)
+    trend_line = lr.predict(x_num.reshape(-1, 1))
+    ax.plot(ts.index, trend_line, "--", color=C["gold"], lw=2.0, label="Trend (LR)")
+    
+    ma3 = ts.rolling(3).mean()
+    ax.plot(ts.index, ma3.values, color=C["c2"], lw=1.8, ls="-.", label="MA(3)")
+    
+    set_axis_style(ax, "Monthly Revenue + Trend + MA(3)", "Date", "$")
+    ax.yaxis.set_major_formatter(mticker.FuncFormatter(fmt_usd))
+    ax.legend(facecolor=C["panel"], edgecolor=C["grid"], labelcolor=C["text"])
+
+    plt.tight_layout()
+    path = os.path.join(OUTPUT_DIR, fname)
+    plt.savefig(path)
+    plt.show()
+
+
+def plot_acf_pacf(ts, decomp_res, fname):
+    fig, ax = plt.subplots(figsize=(12, 7), facecolor=C["bg"])
+    
+    lags = np.arange(len(decomp_res["acf"]))
+    ax.bar(lags, decomp_res["acf"], color=C["c0"], alpha=0.8, label="ACF", width=0.35, align="edge")
+    ax.bar(lags + 0.35, decomp_res["pacf"], color=C["c1"], alpha=0.8, label="PACF", width=0.35, align="edge")
+    
+    ax.axhline(0, color=C["text"], lw=0.8, alpha=0.5)
+    ax.axhline(1.96 / np.sqrt(len(ts)), color=C["gold"], lw=1.2, ls="--", alpha=0.7)
+    ax.axhline(-1.96 / np.sqrt(len(ts)), color=C["gold"], lw=1.2, ls="--", alpha=0.7)
+    
+    set_axis_style(ax, "ACF / PACF of Time Series", "Lag", "Correlation")
+    ax.legend(facecolor=C["panel"], edgecolor=C["grid"], labelcolor=C["text"])
+    
+    plt.tight_layout()
+    path = os.path.join(OUTPUT_DIR, fname)
+    plt.savefig(path)
+    plt.show()
+
+
+def plot_decomposition_components(ts, decomp_res, fname):
+    if decomp_res["decomp"] is None:
+        return None
+    
+    dec = decomp_res["decomp"]
+    fig, axes = plt.subplots(1, 3, figsize=(18, 5), facecolor=C["bg"])
+    
+    components = [dec.trend, dec.seasonal, dec.resid]
+    titles = ["Trend", "Seasonality", "Residuals"]
+    colors = [C["c2"], C["c3"], C["c4"]]
+    
+    for ax, comp, title, color_k in zip(axes, components, titles, colors):
+        ax.plot(ts.index, comp.values, color=color_k, lw=1.8, alpha=0.85)
+        ax.axhline(0, color=C["sub"], lw=0.8, ls="--", alpha=0.5)
+        set_axis_style(ax, f"Decomposition: {title}", "Date", "$")
+        ax.yaxis.set_major_formatter(mticker.FuncFormatter(fmt_usd))
+
     plt.tight_layout()
     path = os.path.join(OUTPUT_DIR, fname)
     plt.savefig(path)

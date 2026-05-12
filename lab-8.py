@@ -1,16 +1,19 @@
 import os
+import time
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
-from sklearn.ensemble import IsolationForest
-from pathlib import Path
-
-
+from sklearn.ensemble import IsolationForest, RandomForestClassifier, GradientBoostingClassifier
+from sklearn.preprocessing import StandardScaler
+from sklearn.model_selection import train_test_split, StratifiedKFold, cross_val_score
+from sklearn.metrics import roc_auc_score, f1_score, accuracy_score
+from sklearn.linear_model import LogisticRegression
+from sklearn.neighbors import KNeighborsClassifier
+from sklearn.svm import SVC
 
 SEP = "=" * 67
 
 OUTPUT_DIR  = "outputs"
-out_dir   = Path("outputs")
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 
 DATA_PATH = os.path.join(OUTPUT_DIR, "sample_data.xlsx")
@@ -102,6 +105,27 @@ def main():
         print(f"  {rec:<25}: {cnt:>4} ({cnt/len(df)*100:.1f}%)")
 
 
+
+    print(f"\n{SEP}")
+
+    X, X_sc, y, scaler = prepare_ml_data(df)
+    clf_res  = train_classifiers(X_sc, y)
+
+    print(f"{'Model':<18} {'Acc%':>8} {'F1':>8} {'AUC':>8} {'CV-Acc%':>10} {'Time,ms':>8}")
+    for name, res in clf_res.items():
+        if name in ("best", "importances", "X_tr", "X_te", "y_tr", "y_te"):
+            continue
+        print(f"{name:<18} {res['acc']:>8.2f} {res['f1']:>8.4f} {res['auc']:>8.4f} {res['cv']:>10.2f} {res['t_ms']:>8.1f}")
+
+    print(f"\nBest model (AUC): {clf_res['best']} (AUC={clf_res[clf_res['best']]['auc']:.4f})")
+
+    print(f"\nTop-10 features (Random Forest importance):")
+    for feat, imp in clf_res['importances'].nlargest(10).items():
+        bar = "=" * int(imp * 100)
+        print(f"  {feat:<20} {imp:.4f}  {bar}")
+
+
+    # clu_res  = cluster_borrowers(X_sc, df)
 
 
 
@@ -363,6 +387,77 @@ def compute_scorecard(df: pd.DataFrame):
 
     return df
 
+
+ML_FEATURES = [
+    "loan_amount", "loan_days", "age", "gender_id",
+    "marital_status_id", "children_count_id", "education_id",
+    "has_immovables", "has_movables", "employment_type_id",
+    "seniority_years", "monthly_income", "monthly_expenses",
+    "other_loans_active", "other_loans_about_monthly",
+    "dti", "loan_to_income", "net_income", "expense_ratio",
+    "job_tenure_months", "addr_tenure_months", "daily_payment",
+    "applied_night", "applied_weekend", "is_repeat_client",
+    "fraud_score", "has_active_loans", "prolongation_count",
+    "fact_addr_owner_type_id",
+]
+
+def prepare_ml_data(df: pd.DataFrame):
+    X = df[ML_FEATURES].copy()
+    for col in X.select_dtypes(include=[np.number]).columns:
+        X[col] = X[col].fillna(X[col].median())
+
+    y = df["target"].values
+
+    scaler = StandardScaler()
+    X_sc = scaler.fit_transform(X)
+
+    return X, X_sc, y, scaler
+
+
+def train_classifiers(X_sc: np.ndarray, y: np.ndarray):
+    X_tr, X_te, y_tr, y_te = train_test_split(X_sc, y, test_size=0.25, random_state=42, stratify=y)
+
+    models = {
+        "LogisticReg": LogisticRegression(max_iter=500, random_state=42, C=0.8),
+        "KNN(k=7)": KNeighborsClassifier(n_neighbors=7, metric="euclidean"),
+        "SVM(RBF)": SVC(kernel="rbf", probability=True, random_state=42, C=1.0),
+        "RandomForest": RandomForestClassifier(n_estimators=150, random_state=42, max_depth=8, class_weight="balanced"),
+        "GradientBoost":  GradientBoostingClassifier(n_estimators=100, random_state=42, learning_rate=0.1),
+    }
+
+    results = {}
+    cv = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
+
+    for name, model in models.items():
+        t0 = time.perf_counter()
+        model.fit(X_tr, y_tr)
+        y_pred = model.predict(X_te)
+        y_proba = model.predict_proba(X_te)[:, 1] if hasattr(model, "predict_proba") else None
+        t_ms = (time.perf_counter() - t0) * 1000
+
+        acc = accuracy_score(y_te, y_pred) * 100
+        f1 = f1_score(y_te, y_pred, zero_division=0)
+        auc = roc_auc_score(y_te, y_proba) if y_proba is not None else 0.0
+        cv_s = cross_val_score(model, X_sc, y, cv=cv, scoring="accuracy").mean() * 100
+
+        results[name] = dict(
+            model=model, acc=acc, f1=f1, auc=auc,
+            cv=cv_s, y_pred=y_pred, y_proba=y_proba,
+            y_te=y_te, t_ms=t_ms,
+        )
+
+    best_name = max(results, key=lambda k: results[k]["auc"])
+
+    rf = models["RandomForest"]
+    importances = pd.Series(rf.feature_importances_, index=ML_FEATURES)
+
+    results["best"] = best_name
+    results["importances"] = importances
+    results["X_tr"] = X_tr
+    results["X_te"] = X_te
+    results["y_tr"] = y_tr
+    results["y_te"] = y_te
+    return results
 
 
 

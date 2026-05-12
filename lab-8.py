@@ -3,13 +3,19 @@ import time
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
-from sklearn.ensemble import IsolationForest, RandomForestClassifier, GradientBoostingClassifier
+from matplotlib.colors import ListedColormap
+from scipy.cluster.hierarchy import linkage, dendrogram
 from sklearn.preprocessing import StandardScaler
+from sklearn.ensemble import IsolationForest, RandomForestClassifier, GradientBoostingClassifier
 from sklearn.model_selection import train_test_split, StratifiedKFold, cross_val_score
-from sklearn.metrics import roc_auc_score, f1_score, accuracy_score
+from sklearn.metrics import confusion_matrix, roc_auc_score, f1_score, accuracy_score, silhouette_score
 from sklearn.linear_model import LogisticRegression
-from sklearn.neighbors import KNeighborsClassifier
+from sklearn.neighbors import KNeighborsClassifier, NearestNeighbors
+from sklearn.decomposition import PCA
 from sklearn.svm import SVC
+from sklearn.cluster import KMeans, DBSCAN, AgglomerativeClustering
+from matplotlib.colors import LinearSegmentedColormap
+
 
 SEP = "=" * 67
 
@@ -35,7 +41,6 @@ C = dict(
     gold="#FFD700", neutral="#78909C",
 )
 PAL8 = [C["c0"],C["c1"],C["c2"],C["c3"],C["c4"],C["c5"],C["c6"],C["c7"]]
-
 
 
 def main():
@@ -105,7 +110,6 @@ def main():
         print(f"  {rec:<25}: {cnt:>4} ({cnt/len(df)*100:.1f}%)")
 
 
-
     print(f"\n{SEP}")
 
     X, X_sc, y, scaler = prepare_ml_data(df)
@@ -125,19 +129,37 @@ def main():
         print(f"  {feat:<20} {imp:.4f}  {bar}")
 
 
-    # clu_res  = cluster_borrowers(X_sc, df)
+    print(f"\n{SEP}")
 
+    clu_res  = cluster_borrowers(X_sc, df)
 
+    print(f"PCA: {clu_res['pca'].explained_variance_ratio_.cumsum()[-1]*100:.1f}% variance in 3 components")
+    print(f"Optimal K (Silhouette): {clu_res['best_k']}")
+
+    print(f"\n{'Cluster':>9} {'N':>5}  {'Income':>10}  {'DTI':>8}  {'Score':>8}  {'Bad%':>7}  Profile")
+    for cl in range(clu_res['best_k']):
+        sub = df[df["cluster"] == cl]
+        profile_info = clu_res['profiles'][cl]
+        print(f"{cl:>9} {profile_info['n']:>5}  {sub['monthly_income'].mean():>10,.0f}  {sub['dti'].mean():>8.3f}  {sub['score_raw'].mean():>8.1f}  {profile_info['bad_rate']:>6.1f}%  {profile_info['profile']}")
+
+    best_model = clf_res[clf_res["best"]]["model"]
+    df["ml_prediction"] = best_model.predict(X_sc)
+    df["ml_probability"] = best_model.predict_proba(X_sc)[:, 1] if hasattr(best_model, "predict_proba") else df["ml_prediction"].astype(float)
+    df["binary_decision"] = df["ml_prediction"]
 
 
     plot_eda_score_distribution(df, "l8_score_distribution.png")
-    plot_eda_rating_pie(df, "l8_rating_pie.png")
     plot_eda_income_vs_score(df, "l8_income_vs_score.png")
     plot_eda_dti_vs_score(df, "l8_dti_vs_score.png")
 
+    plot_fraud_score_distribution(df, "l8_fraud_score_distribution.png")
+    plot_fraud_isolation_forest(df, "l8_fraud_isolation_forest.png")
 
+    plot_ml_confusion_matrix(clf_res, "l8_ml_confusion_matrix.png")
 
-
+    plot_clustering_pca_target(df, clu_res, "l8_clustering_pca_target.png")
+    plot_clustering_dendrogram(clu_res, "l8_clustering_dendrogram.png")
+    plot_clustering_pca_3d(clu_res, "l8_clustering_pca_3d.png")
 
 
 
@@ -460,9 +482,49 @@ def train_classifiers(X_sc: np.ndarray, y: np.ndarray):
     return results
 
 
+def cluster_borrowers(X_sc: np.ndarray, df: pd.DataFrame):
+    pca = PCA(n_components=3, random_state=42)
+    X_pca = pca.fit_transform(X_sc)
 
+    K_range = range(2, 9)
+    inertias, sils = [], []
+    for k in K_range:
+        km = KMeans(n_clusters=k, n_init=15, random_state=42)
+        lbl = km.fit_predict(X_sc)
+        inertias.append(km.inertia_)
+        sils.append(silhouette_score(X_sc, lbl, sample_size=400))
 
+    best_k = list(K_range)[np.argmax(sils)]
 
+    km_final = KMeans(n_clusters=best_k, n_init=20, random_state=42)
+    km_labels = km_final.fit_predict(X_sc)
+
+    agg = AgglomerativeClustering(n_clusters=best_k, linkage="ward")
+    agg_labels= agg.fit_predict(X_sc)
+
+    nbrs = NearestNeighbors(n_neighbors=8).fit(X_sc)
+    dists, _ = nbrs.kneighbors(X_sc)
+    eps = float(np.percentile(dists[:, -1], 90))
+    dbs = DBSCAN(eps=eps, min_samples=8)
+    dbs_labels = dbs.fit_predict(X_sc)
+    n_dbs = len(set(dbs_labels)) - (1 if -1 in dbs_labels else 0)
+
+    df["cluster"] = km_labels
+    cluster_profiles = {}
+    for cl in range(best_k):
+        sub = df[df["cluster"] == cl]
+        bad_rate = (1 - sub["target"].mean()) * 100
+        profile = ("Risky" if bad_rate > 40 else "Reliable" if bad_rate < 15 else "Medium")
+        cluster_profiles[cl] = dict(n=len(sub), bad_rate=bad_rate, profile=profile)
+
+    Z_link = linkage(X_sc[:100], method="ward")
+
+    return dict(
+        X_pca=X_pca, km_labels=km_labels, agg_labels=agg_labels,
+        dbs_labels=dbs_labels, n_dbs=n_dbs, best_k=best_k,
+        inertias=inertias, sils=sils, K_range=list(K_range),
+        Z_link=Z_link, pca=pca, profiles=cluster_profiles,
+    )
 
 
 def plot_eda_score_distribution(df, fname):
@@ -479,26 +541,6 @@ def plot_eda_score_distribution(df, fname):
     ax.tick_params(colors=C["sub"])
     for spine in ax.spines.values():
         spine.set_edgecolor(C["grid"])
-
-    plt.tight_layout()
-    path = os.path.join(OUTPUT_DIR, fname)
-    plt.savefig(path)
-    plt.close(fig)
-
-
-def plot_eda_rating_pie(df, fname):
-    fig, ax = plt.subplots(figsize=(8, 8), facecolor=C["bg"])
-    rating_vals = df["rating"].value_counts().sort_index()
-    colors_r = [C["bad"], C["c6"], C["c1"], C["c0"], C["c2"], C["good"]]
-    wedges, texts, autos = ax.pie(
-        rating_vals.values, labels=rating_vals.index.tolist(), autopct="%1.1f%%",
-        colors=colors_r[:len(rating_vals)], startangle=90, wedgeprops=dict(edgecolor=C["bg"], lw=2),
-    )
-    for t in texts: 
-        t.set_color(C["text"])
-    for a in autos: 
-        a.set_color("white")
-    ax.set_title("Rating categories distribution (HR-AA)", color=C["text"], pad=10)
 
     plt.tight_layout()
     path = os.path.join(OUTPUT_DIR, fname)
@@ -545,6 +587,149 @@ def plot_eda_dti_vs_score(df, fname):
     path = os.path.join(OUTPUT_DIR, fname)
     plt.savefig(path)
     plt.close(fig)
+
+
+
+
+def plot_fraud_score_distribution(df, fname):
+    fig, ax = plt.subplots(figsize=(12, 6), facecolor=C["bg"])
+    ax.hist(df["fraud_score"], bins=range(0, df["fraud_score"].max() + 2), color=C["c1"], alpha=0.85, edgecolor=C["grid"], align="left", rwidth=0.8)
+    ax.axvline(2, color=C["bad"], lw=2.0, ls="--", label="Risk threshold = 2")
+    ax.axvline(5, color=C["fraud"], lw=2.0, ls="-.", label="Critical risk = 5")
+    ax.set_title("Fraud Score distribution (number of triggered rules)", color=C["text"])
+    ax.set_xlabel("Fraud Score", color=C["sub"])
+    ax.set_ylabel("Number of applications", color=C["sub"])
+    ax.legend(facecolor=C["panel"], edgecolor=C["grid"], labelcolor=C["text"])
+    ax.set_facecolor(C["panel"])
+    ax.tick_params(colors=C["sub"])
+    for spine in ax.spines.values():
+        spine.set_edgecolor(C["grid"])
+
+    plt.tight_layout()
+    path = os.path.join(OUTPUT_DIR, fname)
+    plt.savefig(path)
+    plt.close(fig)
+
+
+def plot_fraud_isolation_forest(df, fname):
+    fig, ax = plt.subplots(figsize=(12, 6), facecolor=C["bg"])
+    iso_fraud = df[df["iso_anomaly"] == 1]["fraud_score"]
+    iso_normal = df[df["iso_anomaly"] == 0]["fraud_score"]
+    ax.hist(iso_normal, bins=range(0, 10), density=True, alpha=0.65,
+            color=C["c0"], edgecolor=C["grid"], label="Normal (ISO)", align="left")
+    ax.hist(iso_fraud, bins=range(0, 10), density=True, alpha=0.65,
+            color=C["fraud"], edgecolor=C["grid"], label="Anomaly (ISO)", align="left")
+    ax.set_title("Isolation Forest: Rule-based Fraud Score (Normal vs Anomaly)", color=C["text"])
+    ax.set_xlabel("Rule-based Fraud Score", color=C["sub"])
+    ax.set_ylabel("Density", color=C["sub"])
+    ax.legend(facecolor=C["panel"], edgecolor=C["grid"], labelcolor=C["text"])
+    ax.set_facecolor(C["panel"])
+    ax.tick_params(colors=C["sub"])
+    for spine in ax.spines.values(): spine.set_edgecolor(C["grid"])
+
+    plt.tight_layout()
+    path = os.path.join(OUTPUT_DIR, fname)
+    plt.savefig(path)
+    plt.close(fig)
+
+
+def plot_ml_confusion_matrix(clf_res, fname):
+    best = clf_res["best"]
+    y_te = clf_res[best]["y_te"]
+    cm = confusion_matrix(y_te, clf_res[best]["y_pred"])
+    
+    fig, ax = plt.subplots(figsize=(8, 7), facecolor=C["bg"])
+    cmap_cm = LinearSegmentedColormap.from_list("cm", ["#0D1117", C["c0"]])
+    im = ax.imshow(cm, cmap=cmap_cm)
+    for i in range(2):
+        for j in range(2):
+            ax.text(j, i, str(cm[i, j]), ha="center", va="center", color="white" if cm[i, j] > cm.max() * 0.4 else C["sub"])
+    ax.set_xticks([0, 1])
+    ax.set_yticks([0, 1])
+    ax.set_xticklabels(["Overdue", "Returned"], color=C["text"])
+    ax.set_yticklabels(["Overdue", "Returned"], color=C["text"])
+    plt.colorbar(im, ax=ax, fraction=0.04)
+    ax.set_title(f"Confusion Matrix: {best}", color=C["text"])
+    ax.set_xlabel("Prediction", color=C["sub"])
+    ax.set_ylabel("Actual", color=C["sub"])
+    ax.tick_params(colors=C["sub"])
+
+    plt.tight_layout()
+    path = os.path.join(OUTPUT_DIR, fname)
+    plt.savefig(path)
+    plt.close(fig)
+
+
+def plot_clustering_pca_target(df, clu_res, fname):
+    fig, ax = plt.subplots(figsize=(10, 8), facecolor=C["bg"])
+    X_pca = clu_res["X_pca"]
+    
+    sc = ax.scatter(X_pca[:, 0], X_pca[:, 1], c=df["target"].values, cmap=ListedColormap([C["bad"], C["good"]]), s=20, alpha=0.65, edgecolors="none")
+    ax.set_title("PCA: Returned (green) vs Overdue (red)", color=C["text"])
+    ax.set_xlabel("PC1", color=C["sub"])
+    ax.set_ylabel("PC2", color=C["sub"])
+    ax.set_facecolor(C["panel"])
+    plt.colorbar(sc, ax=ax, fraction=0.04, label="0=Overdue / 1=Returned")
+    ax.tick_params(colors=C["sub"])
+    for spine in ax.spines.values():
+        spine.set_edgecolor(C["grid"])
+
+    plt.tight_layout()
+    path = os.path.join(OUTPUT_DIR, fname)
+    plt.savefig(path)
+    plt.close(fig)
+
+
+def plot_clustering_dendrogram(clu_res, fname):
+    fig, ax = plt.subplots(figsize=(12, 8), facecolor=C["bg"])
+    
+    dendrogram(clu_res["Z_link"], ax=ax, truncate_mode="lastp", p=15, show_leaf_counts=True, color_threshold=clu_res["Z_link"][-clu_res["best_k"] + 1, 2], above_threshold_color=C["sub"])
+    
+    ax.set_facecolor(C["panel"])
+    ax.tick_params(colors=C["sub"])
+    for spine in ax.spines.values(): spine.set_edgecolor(C["grid"])
+    ax.set_title("Dendrogram (Ward linkage, 100 observations)", color=C["text"], pad=10)
+    ax.set_xlabel("Application ID", color=C["sub"])
+    ax.set_ylabel("Distance", color=C["sub"])
+
+    plt.tight_layout()
+    path = os.path.join(OUTPUT_DIR, fname)
+    plt.savefig(path)
+    plt.close(fig)
+
+
+def plot_clustering_pca_3d(clu_res, fname):
+    fig = plt.figure(figsize=(12, 10), facecolor=C["bg"])
+    ax = fig.add_subplot(111, projection="3d")
+    
+    X_pca = clu_res["X_pca"]
+    km_labels = clu_res["km_labels"]
+    best_k = clu_res["best_k"]
+    
+    cmap_k = ListedColormap(PAL8[:best_k])
+    
+    ax.set_facecolor(C["panel"])
+    ax.xaxis.pane.fill = ax.yaxis.pane.fill = ax.zaxis.pane.fill = False
+    ax.xaxis.pane.set_edgecolor(C["grid"])
+    ax.yaxis.pane.set_edgecolor(C["grid"])
+    ax.zaxis.pane.set_edgecolor(C["grid"])
+    
+    sc = ax.scatter(X_pca[:, 0], X_pca[:, 1], X_pca[:, 2], c=km_labels, cmap=cmap_k, s=15, alpha=0.65)
+    
+    ax.set_xlabel("PC1", color=C["sub"])
+    ax.set_ylabel("PC2", color=C["sub"])
+    ax.set_zlabel("PC3", color=C["sub"])
+    ax.tick_params(colors=C["sub"], labelsize=8)
+    ax.set_title(f"3D PCA: K-Means (k={best_k})", color=C["text"])
+    ax.view_init(elev=20, azim=45)
+    ax.grid(color=C["grid"], alpha=0.2)
+    
+    plt.colorbar(sc, ax=ax, fraction=0.04, label="Cluster")
+    plt.tight_layout()
+    path = os.path.join(OUTPUT_DIR, fname)
+    plt.savefig(path)
+    plt.close(fig)
+
 
 
 if __name__ == "__main__":

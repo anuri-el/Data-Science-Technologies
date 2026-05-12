@@ -1,17 +1,39 @@
 import os
 import numpy as np
 import pandas as pd
+import matplotlib.pyplot as plt
 from sklearn.ensemble import IsolationForest
+from pathlib import Path
+
+
 
 SEP = "=" * 67
 
 OUTPUT_DIR  = "outputs"
+out_dir   = Path("outputs")
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 
 DATA_PATH = os.path.join(OUTPUT_DIR, "sample_data.xlsx")
 DESC_PATH = os.path.join(OUTPUT_DIR, "Datdata_descriptiona_Set_7.xlsx")
 
 REF_DATE  = pd.Timestamp("2021-02-01")
+
+SCORE_BASE = 300
+SCORE_MIN = 0
+SCORE_MAX = 850
+
+
+C = dict(
+    bg="#0D1117", panel="#161B22", grid="#30363D",
+    text="#E6EDF3", sub="#8B949E",
+    c0="#2196F3", c1="#FF9800", c2="#4CAF50", c3="#E91E63",
+    c4="#9C27B0", c5="#00BCD4", c6="#FF5722", c7="#8BC34A",
+    good="#4CAF50", bad="#EF5350", fraud="#FF1744",
+    gold="#FFD700", neutral="#78909C",
+)
+PAL8 = [C["c0"],C["c1"],C["c2"],C["c3"],C["c4"],C["c5"],C["c6"],C["c7"]]
+
+
 
 def main():
     print(f"\n{SEP}")
@@ -57,6 +79,39 @@ def main():
 
 
     print(f"\n{SEP}")
+    
+    df = compute_scorecard(df)
+    print(f"Score range: {df['score_raw'].min():.0f} - {df['score_raw'].max():.0f}")
+    print(f"Average Score: {df['score_raw'].mean():.1f} +- {df['score_raw'].std():.1f}")
+    
+    print(f"\nFeature contribution to average score::")
+    score_details = df["score_details"].iloc[0]
+    for feat, val in sorted(score_details.items(), key=lambda x: abs(x[1]), reverse=True):
+        bar = "=" * int(abs(val) * 1.5) if abs(val) > 0 else ""
+        print(f"{feat:<20} {val:>+7.2f}  {bar}")
+
+    print(f"\nRating categories:")
+    rating_dist = df["rating"].value_counts().sort_index()
+    for r, cnt in rating_dist.items():
+        pct = cnt / len(df) * 100
+        bar = "=" * int(pct / 3)
+        print(f"  {r:>4}: {cnt:>4} ({pct:>5.1f}%)  {bar}")
+
+    print(f"\nRecommendations:")
+    for rec, cnt in df["recommendation"].value_counts().items():
+        print(f"  {rec:<25}: {cnt:>4} ({cnt/len(df)*100:.1f}%)")
+
+
+
+
+
+
+    plot_eda_score_distribution(df, "l8_score_distribution.png")
+    plot_eda_rating_pie(df, "l8_rating_pie.png")
+    plot_eda_income_vs_score(df, "l8_income_vs_score.png")
+    plot_eda_dti_vs_score(df, "l8_dti_vs_score.png")
+
+
 
 
 
@@ -188,6 +243,213 @@ def detect_fraud(df: pd.DataFrame):
     return df
 
 
+SCORECARD = {
+    "age": [
+        (lambda x: x < 22, -10, "< 22 years"),
+        (lambda x: (x >= 22) & (x < 25), 5, "22-24"),
+        (lambda x: (x >= 25) & (x < 35), 20, "25-34"),
+        (lambda x: (x >= 35) & (x < 50), 18, "35-49"),
+        (lambda x: x >= 50, 10, "50+"),
+    ],
+
+    "monthly_income": [
+        (lambda x: x < 5000, -15, "< 5000"),
+        (lambda x: (x >= 5000) & (x < 8000), 5, "5000-8000"),
+        (lambda x: (x >= 8000) & (x < 12000), 15, "8000-12000"),
+        (lambda x: (x >= 12000) & (x < 20000), 20, "12000-20000"),
+        (lambda x: x >= 20000, 15, "20000+"),
+    ],
+
+    "dti": [
+        (lambda x: x <= 0.30, 25, "≤ 0.30"),
+        (lambda x: (x > 0.30) & (x <= 0.50), 18, "0.30-0.50"),
+        (lambda x: (x > 0.50) & (x <= 0.70), 10, "0.50-0.70"),
+        (lambda x: (x > 0.70) & (x <= 1.0), 0, "0.70-1.0"),
+        (lambda x: x > 1.0, -20, "> 1.0"),
+    ],
+
+    "seniority_years": [
+        (lambda x: x < 1, -5, "< 1 year"),
+        (lambda x: (x >= 1) & (x < 3), 10, "1-2 years"),
+        (lambda x: (x >= 3) & (x < 7), 18, "3-6 years"),
+        (lambda x: x >= 7, 22, "7+ years"),
+    ],
+
+    "education_id": [
+        (lambda x: x == 1, -5, "None"),
+        (lambda x: x == 2, 5, "Below secondary"),
+        (lambda x: x == 3, 10, "Secondary"),
+        (lambda x: x == 4, 14, "Vocational/Technical"),
+        (lambda x: x == 5, 18, "Higher"),
+        (lambda x: x == 6, 22, "Academic degree"),
+    ],
+
+    "has_immovables": [
+        (lambda x: x == 1, 10, "Yes"),
+        (lambda x: x == 0, -5, "No"),
+    ],
+
+    "has_movables": [
+        (lambda x: x == 1, 8, "Yes"),
+        (lambda x: x == 0, -3, "No"),
+    ],
+
+    "other_loans_active": [
+        (lambda x: x == 0, 12, "None"),
+        (lambda x: (x > 0) & (x <= 1), 0, "1"),
+        (lambda x: x > 1, -10, "2+"),
+    ],
+
+    "loan_to_income": [
+        (lambda x: x <= 0.5, 20, "≤ 0.5"),
+        (lambda x: (x > 0.5) & (x <= 1.0), 15, "0.5-1.0"),
+        (lambda x: (x > 1.0) & (x <= 2.0), 8, "1.0-2.0"),
+        (lambda x: (x > 2.0) & (x <= 4.0), 0, "2.0-4.0"),
+        (lambda x: x > 4.0, -15, "> 4.0"),
+    ],
+
+    "applied_night": [
+        (lambda x: x == 1, -5, "Night application"),
+        (lambda x: x == 0, 5, "Day application"),
+    ],
+
+    "fraud_score": [
+        (lambda x: x == 0, 10, "No fraud flags"),
+        (lambda x: x == 1, 0, "1 flag"),
+        (lambda x: (x >= 2) & (x <= 3), -10, "2-3 flags"),
+        (lambda x: x > 3, -25, "> 3 flags"),
+    ],
+}
+
+
+def compute_scorecard(df: pd.DataFrame):
+    df["score_raw"] = SCORE_BASE
+    score_details = {}
+
+    for feature, bins in SCORECARD.items():
+        if feature not in df.columns:
+            continue
+        col = df[feature]
+        pts = pd.Series(0, index=df.index)
+        for cond_fn, points, _ in bins:
+            mask = cond_fn(col)
+            pts[mask] = points
+        df["score_raw"] += pts
+        score_details[feature] = pts.mean()
+
+    df["score_raw"] = df["score_raw"].clip(SCORE_MIN, SCORE_MAX)
+
+    center = df["score_raw"].mean()
+    scale = df["score_raw"].std() + 1e-9
+    df["pd_estimate"] = 1 / (1 + np.exp((df["score_raw"] - center) / scale))
+
+    df["rating"] = pd.cut(
+        df["score_raw"],
+        bins=[SCORE_MIN, 300, 370, 430, 500, 580, SCORE_MAX],
+        labels=["HR","D","C","B","A","AA"],
+        include_lowest=True
+    )
+
+    conditions = [
+        df["score_raw"] >= 500,
+        df["score_raw"] >= 430,
+        df["score_raw"] >= 370,
+        df["score_raw"] < 370,
+    ]
+    choices = ["Approve", "Conditionally approve", "Requires manual review", "Reject"]
+    df["recommendation"] = np.select(conditions, choices, default="Reject")
+
+    df["score_details"] = [score_details] * len(df)
+
+    return df
+
+
+
+
+
+
+
+
+def plot_eda_score_distribution(df, fname):
+    fig, ax = plt.subplots(figsize=(12, 6), facecolor=C["bg"])
+    for tgt, lbl, clr in [(1, "Returned", C["good"]), (0, "Overdue", C["bad"])]:
+        vals = df[df["target"] == tgt]["score_raw"]
+        ax.hist(vals, bins=40, density=True, alpha=0.65, color=clr, edgecolor=C["grid"], label=f"{lbl} (N={len(vals)})")
+    ax.axvline(430, color=C["gold"], lw=2.0, ls="--", label="Approval threshold")
+    ax.set_title("Score distribution: Returned vs Overdue", color=C["text"])
+    ax.set_xlabel("Scoring Score", color=C["sub"])
+    ax.set_ylabel("Density", color=C["sub"])
+    ax.legend(facecolor=C["panel"], edgecolor=C["grid"], labelcolor=C["text"])
+    ax.set_facecolor(C["panel"])
+    ax.tick_params(colors=C["sub"])
+    for spine in ax.spines.values():
+        spine.set_edgecolor(C["grid"])
+
+    plt.tight_layout()
+    path = os.path.join(OUTPUT_DIR, fname)
+    plt.savefig(path)
+    plt.close(fig)
+
+
+def plot_eda_rating_pie(df, fname):
+    fig, ax = plt.subplots(figsize=(8, 8), facecolor=C["bg"])
+    rating_vals = df["rating"].value_counts().sort_index()
+    colors_r = [C["bad"], C["c6"], C["c1"], C["c0"], C["c2"], C["good"]]
+    wedges, texts, autos = ax.pie(
+        rating_vals.values, labels=rating_vals.index.tolist(), autopct="%1.1f%%",
+        colors=colors_r[:len(rating_vals)], startangle=90, wedgeprops=dict(edgecolor=C["bg"], lw=2),
+    )
+    for t in texts: 
+        t.set_color(C["text"])
+    for a in autos: 
+        a.set_color("white")
+    ax.set_title("Rating categories distribution (HR-AA)", color=C["text"], pad=10)
+
+    plt.tight_layout()
+    path = os.path.join(OUTPUT_DIR, fname)
+    plt.savefig(path)
+    plt.close(fig)
+
+
+def plot_eda_income_vs_score(df, fname):
+    fig, ax = plt.subplots(figsize=(10, 6), facecolor=C["bg"])
+    for tgt, clr, lbl in [(1, C["good"], "Returned"), (0, C["bad"], "Overdue")]:
+        sub = df[df["target"] == tgt]
+        ax.scatter(sub["monthly_income"].clip(0, 50000), sub["score_raw"], c=clr, s=15, alpha=0.55, label=lbl)
+    ax.axhline(430, color=C["gold"], lw=1.5, ls="--")
+    ax.set_title("Income vs Scoring Score", color=C["text"])
+    ax.set_xlabel("Monthly income, UAH", color=C["sub"])
+    ax.set_ylabel("Score", color=C["sub"])
+    ax.set_facecolor(C["panel"])
+    ax.legend(facecolor=C["panel"], edgecolor=C["grid"], labelcolor=C["text"])
+    ax.tick_params(colors=C["sub"])
+    for spine in ax.spines.values(): 
+        spine.set_edgecolor(C["grid"])
+
+    plt.tight_layout()
+    path = os.path.join(OUTPUT_DIR, fname)
+    plt.savefig(path)
+    plt.close(fig)
+
+
+def plot_eda_dti_vs_score(df, fname):
+    fig, ax = plt.subplots(figsize=(10, 6), facecolor=C["bg"])
+    sc = ax.scatter(df["dti"].clip(0, 3), df["score_raw"], c=df["target"], cmap=plt.cm.colors.ListedColormap([C["bad"], C["good"]]), s=15, alpha=0.65, edgecolors="none")
+    ax.axhline(430, color=C["gold"], lw=1.5, ls="--")
+    ax.axvline(0.7, color=C["c6"], lw=1.5, ls=":")
+    ax.set_title("DTI vs Scoring Score", color=C["text"])
+    ax.set_xlabel("DTI (debt/income)", color=C["sub"])
+    ax.set_ylabel("Score", color=C["sub"])
+    ax.set_facecolor(C["panel"])
+    plt.colorbar(sc, ax=ax, fraction=0.04, label="0=Overdue / 1=Returned")
+    ax.tick_params(colors=C["sub"])
+    for spine in ax.spines.values():
+        spine.set_edgecolor(C["grid"])
+
+    plt.tight_layout()
+    path = os.path.join(OUTPUT_DIR, fname)
+    plt.savefig(path)
+    plt.close(fig)
 
 
 if __name__ == "__main__":

@@ -5,12 +5,18 @@ import alphashape
 import geopandas as gpd
 import geonamescache
 import matplotlib.pyplot as plt
-from matplotlib.colors import ListedColormap, LinearSegmentedColormap
-from shapely.geometry import Point, MultiPoint
+import matplotlib.patheffects as pe
+from matplotlib.ticker import FuncFormatter
+from matplotlib.cm import ScalarMappable
+import matplotlib.patches as mpatches
+from matplotlib.colors import ListedColormap, LinearSegmentedColormap, LogNorm
+from shapely.geometry import Point, MultiPoint, Polygon
 from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import confusion_matrix, silhouette_score
 from sklearn.neighbors import KNeighborsClassifier, NearestNeighbors
 from sklearn.decomposition import PCA
+from sklearn.cluster import KMeans, AgglomerativeClustering, DBSCAN
+
 
 gc = geonamescache.GeonamesCache()
 
@@ -20,10 +26,20 @@ SEP = "=" * 67
 OUTPUT_DIR  = "outputs"
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 
-DATA_PATH = os.path.join(OUTPUT_DIR, "sample_data.xlsx")
-DESC_PATH = os.path.join(OUTPUT_DIR, "Datdata_descriptiona_Set_7.xlsx")
-OUTPUT_CSV = os.path.join(OUTPUT_DIR, "l8_scoring_results.csv")
 
+C = dict(
+    bg="#0A0E1A", ocean="#0D1B2E", land="#1C2E4A",
+    border="#4A6080", text="#E8EDF8", sub="#7A8BA0",
+    grid="#1A2438", panel="#101828",
+    c0="#2196F3", c1="#FF9800", c2="#4CAF50", c3="#E91E63",
+    c4="#9C27B0", c5="#00BCD4", c6="#FF5722", c7="#8BC34A",
+    gold="#FFD700", good="#4CAF50", bad="#EF5350",
+)
+PAL8   = [C[f"c{i}"] for i in range(8)]
+
+CLUST_COLORS = ["#2196F3","#FF9800","#4CAF50","#E91E63","#9C27B0","#00BCD4"]
+US_EXTENT = (-125, -65, 24, 50)
+EU_EXTENT = (-12,  35,  34, 72)
 
 
 def main() -> None:
@@ -50,6 +66,42 @@ def main() -> None:
     print("State Polygons")
 
     gdf = build_state_polygons(us_cities_gdf, us_states_meta)
+
+    print(f"Unit verification (official vs geometric area):")
+    print(f"{'State':<22} {'Official km2':>12}  {'Computed km2':>13}  {'Δ%':>7}  {'Density people/km2':>14}")
+    for _, r in gdf.nlargest(15, "density").iterrows():
+        if r["area_official"] > 0:
+            delta = abs(r["area_computed_km2"] - r["area_official"]) / r["area_official"] * 100
+            print(f"{r['state_name']:<22} {r['area_official']:>12,}  {r['area_computed_km2']:>13,.0f}  {delta:>7.1f}%  {r['density']:>14.2f}")
+
+
+    print(f"\n{SEP}")
+    gdf, ml_res = cluster_states(gdf)
+    best_k = ml_res['best_k']
+    sils = ml_res['sils']
+    knn_acc = ml_res.get('knn_acc', 0) 
+
+    print(f"\nOptimal K (Silhouette max={max(sils):.4f}): K={best_k}")
+    print(f"KNN classifier (k=5): accuracy {knn_acc:.1f}%")
+    print(f"\nK-Means Cluster Profile (K={best_k}):")
+    print(f"  {'Cluster':>8} {'N':>4}  {'Avg.Dens':>11}  {'Avg.Pop':>12}  Representatives")
+
+    for cl in range(best_k):
+        sub = gdf[gdf["cluster"] == cl]
+        dens_m = sub["density"].mean()
+        pop_m = sub["pop_official"].mean()
+        reps = ", ".join(sub.nlargest(3, "pop_official")["state_code"].tolist())
+        print(f"  {cl:>8} {len(sub):>4}  {dens_m:>11.2f}  {pop_m:>12,.0f}  {reps}")
+    
+    print(f"\nAverage KNN distance between state centroids: {gdf['knn_avg_dist_km'].mean():.0f} km")
+
+
+    print(f"\n{SEP}")
+
+
+
+    plot_us_density(gdf, us_cities_gdf, "l9_us_density.png")
+    plot_us_clusters(gdf, ml_res, "l9_us_clusters.png")
 
 
 
@@ -97,19 +149,53 @@ def load_real_data():
     return us_cities_gdf, eu_cities_gdf, us_states_meta, eu_countries
 
 
+
+US_STATE_STATS = {
+    "AL":{"area":135767,"pop":5024279},"AK":{"area":1723337,"pop":733391},
+    "AZ":{"area":295234,"pop":7151502},"AR":{"area":137732,"pop":3011524},
+    "CA":{"area":423967,"pop":39538223},"CO":{"area":269601,"pop":5773714},
+    "CT":{"area":14357, "pop":3605944},"DE":{"area":6446,  "pop":989948},
+    "FL":{"area":170312,"pop":21538187},"GA":{"area":153910,"pop":10711908},
+    "HI":{"area":28313, "pop":1455271},"ID":{"area":216443,"pop":1839106},
+    "IL":{"area":149995,"pop":12812508},"IN":{"area":94326, "pop":6785528},
+    "IA":{"area":145746,"pop":3190369},"KS":{"area":213100,"pop":2937880},
+    "KY":{"area":104656,"pop":4505836},"LA":{"area":135659,"pop":4657757},
+    "ME":{"area":91633, "pop":1362359},"MD":{"area":32131, "pop":6177224},
+    "MA":{"area":27336, "pop":7029917},"MI":{"area":250487,"pop":10077331},
+    "MN":{"area":225163,"pop":5706494},"MS":{"area":125438,"pop":2961279},
+    "MO":{"area":180540,"pop":6154913},"MT":{"area":380831,"pop":1084225},
+    "NE":{"area":200330,"pop":1961504},"NV":{"area":286380,"pop":3104614},
+    "NH":{"area":24214, "pop":1377529},"NJ":{"area":22591, "pop":9288994},
+    "NM":{"area":314917,"pop":2117522},"NY":{"area":141297,"pop":20201249},
+    "NC":{"area":139391,"pop":10439388},"ND":{"area":183108,"pop":779094},
+    "OH":{"area":116098,"pop":11799448},"OK":{"area":181037,"pop":3959353},
+    "OR":{"area":254799,"pop":4237256},"PA":{"area":119280,"pop":13002700},
+    "RI":{"area":4001,  "pop":1097379},"SC":{"area":82933, "pop":5118425},
+    "SD":{"area":199729,"pop":886667}, "TN":{"area":109153,"pop":6910840},
+    "TX":{"area":695662,"pop":29145505},"UT":{"area":219882,"pop":3271616},
+    "VT":{"area":24906, "pop":643077}, "VA":{"area":110787,"pop":8631393},
+    "WA":{"area":184661,"pop":7705281},"WV":{"area":62756, "pop":1793716},
+    "WI":{"area":169635,"pop":5893718},"WY":{"area":253335,"pop":576851},
+    "DC":{"area":177,   "pop":689545},
+}
+
+
 def build_state_polygons(us_cities_gdf: gpd.GeoDataFrame, us_states_meta: dict):
     records = []
     skipped = []
 
     for state_code, state_name in us_states_meta.items():
         sub = us_cities_gdf[us_cities_gdf["state"] == state_code]
+        stats = US_STATE_STATS.get(state_code, {})
 
         if len(sub) < 3:
             skipped.append(state_code)
             continue
 
         pts = list(zip(sub["lon"], sub["lat"]))
-        alpha = 2.0
+
+        area_est = stats.get("area", 100000)
+        alpha = 8.0 if area_est < 50000 else 4.0 if area_est < 150000 else 2.0 if area_est < 300000 else 1.5
 
         try:
             polygon = alphashape.alphashape(pts, alpha)
@@ -131,7 +217,9 @@ def build_state_polygons(us_cities_gdf: gpd.GeoDataFrame, us_states_meta: dict):
             n_cities = len(sub),
             centroid_lon= cx_w,
             centroid_lat= cy_w,
-            total_population = total_pop,
+            pop_official = stats.get("pop", 0),
+            area_official = stats.get("area", 0),
+            density = stats.get("pop", 0) / max(stats.get("area", 1), 1),
             geometry = polygon,
         ))
 
@@ -141,6 +229,233 @@ def build_state_polygons(us_cities_gdf: gpd.GeoDataFrame, us_states_meta: dict):
     gdf["area_computed_km2"] = gdf_m.geometry.area / 1e6
 
     return gdf
+
+
+def cluster_states(gdf: gpd.GeoDataFrame):
+    gdf["log_density"] = np.log1p(gdf["density"])
+    gdf["log_pop"] = np.log1p(gdf["pop_official"])
+    gdf["log_area"] = np.log1p(gdf["area_official"])
+    gdf["n_cities_log"] = np.log1p(gdf["n_cities"])
+
+    features = ["log_density","log_pop","log_area", "centroid_lon","centroid_lat","n_cities_log"]
+    X = gdf[features].fillna(0).values
+    scaler = StandardScaler()
+    X_sc = scaler.fit_transform(X)
+
+    K_range = range(2, 8)
+    sils = []
+    for k in K_range:
+        km = KMeans(n_clusters=k, n_init=20, random_state=42)
+        lbl = km.fit_predict(X_sc)
+        sils.append(silhouette_score(X_sc, lbl))
+    best_k = list(K_range)[np.argmax(sils)]
+
+    km_final = KMeans(n_clusters=best_k, n_init=30, random_state=42)
+    gdf["cluster"] = km_final.fit_predict(X_sc)
+
+    agg = AgglomerativeClustering(n_clusters=best_k, linkage="ward")
+    gdf["cluster_agg"] = agg.fit_predict(X_sc)
+
+    pca = PCA(n_components=2, random_state=42)
+    X_pca = pca.fit_transform(X_sc)
+    gdf["pca1"] = X_pca[:, 0]
+    gdf["pca2"] = X_pca[:, 1]
+
+    coords_rad = np.radians(gdf[["centroid_lat","centroid_lon"]].values)
+    knn_k = 4
+    nbrs = NearestNeighbors(n_neighbors=knn_k+1, metric="haversine").fit(coords_rad)
+    dists_knn, idx_knn = nbrs.kneighbors(coords_rad)
+    
+    gdf["knn_avg_dist_km"] = dists_knn[:, 1:].mean(axis=1) * 6371
+
+    split   = int(len(X_sc) * 0.75)
+    knn_clf = KNeighborsClassifier(n_neighbors=5, metric="euclidean")
+    knn_clf.fit(X_sc[:split], gdf["cluster"].values[:split])
+    gdf["knn_pred"] = knn_clf.predict(X_sc)
+    knn_acc = (gdf["knn_pred"] == gdf["cluster"]).mean() * 100
+
+    cluster_names = []
+    for cl in range(best_k):
+        sub = gdf[gdf["cluster"] == cl]
+        dens_m = sub["density"].mean()
+        cname = ("Metropolitan" if dens_m > 150 else "Industrial" if dens_m > 60 else "Rural" if dens_m < 20 else "Suburban")
+        cluster_names.append(cname)
+    gdf["cluster_name"] = gdf["cluster"].map({i: cluster_names[i] for i in range(best_k)})
+
+    ml_res = dict(
+        best_k=best_k, K_range=list(K_range), sils=sils,
+        X_sc=X_sc, X_pca=X_pca, pca=pca, km=km_final,
+        idx_knn=idx_knn, dists_knn=dists_knn, knn_acc=knn_acc
+    )
+    return gdf, ml_res
+
+
+
+
+
+
+
+
+
+
+
+
+
+def sax(ax, title="", xl="", yl=""):
+    ax.set_facecolor(C["panel"])
+    ax.tick_params(colors=C["sub"], labelsize=8)
+    for sp in ax.spines.values():
+        sp.set_edgecolor(C["grid"])
+
+    ax.grid(alpha=0.18, color=C["grid"], ls="--", lw=0.6)
+    if title: ax.set_title(title, color=C["text"], pad=5)
+    if xl:
+        ax.set_xlabel(xl, color=C["sub"], fontsize=8)
+    if yl:
+        ax.set_ylabel(yl, color=C["sub"], fontsize=8)
+
+
+def setup_map_ax(ax, extent, title=""):
+    lon_min, lon_max, lat_min, lat_max = extent
+
+    ax.set_facecolor(C["ocean"])
+    ax.set_xlim(lon_min, lon_max)
+    ax.set_ylim(lat_min, lat_max)
+
+    for sp in ax.spines.values():
+        sp.set_edgecolor(C["border"])
+
+    step_lon = 15 if (lon_max - lon_min) > 40 else 10
+    step_lat = 5
+
+    lon_ticks = np.arange(np.ceil(lon_min / step_lon) * step_lon, lon_max + 1, step_lon)
+    lat_ticks = np.arange(np.ceil(lat_min / step_lat) * step_lat, lat_max + 1, step_lat)
+
+    ax.set_xticks(lon_ticks)
+    ax.set_yticks(lat_ticks)
+
+    ax.grid(color=C["grid"], linestyle=":", linewidth=0.5, alpha=0.45)
+
+    def lon_fmt(x, pos):
+        return f"{abs(int(x))}°{'W' if x < 0 else 'E'}"
+
+    def lat_fmt(y, pos):
+        return f"{abs(int(y))}°{'S' if y < 0 else 'N'}"
+
+    ax.xaxis.set_major_formatter(FuncFormatter(lon_fmt))
+    ax.yaxis.set_major_formatter(FuncFormatter(lat_fmt))
+
+    ax.tick_params(axis="both", colors=C["sub"])
+
+    if title:
+        ax.set_title(title, color=C["text"], pad=6)
+
+
+def draw_state_polygons(ax, gdf, column, cmap, norm, label_codes=True, alpha=0.88):
+    for _, row in gdf.iterrows():
+        geom = row.geometry
+        if geom is None or geom.is_empty:
+            continue
+        color = cmap(norm(row[column]))
+
+        def draw_poly(poly):
+            if isinstance(poly, Polygon) and not poly.is_empty:
+                xs, ys = poly.exterior.xy
+                ax.fill(xs, ys, color=color, alpha=alpha, zorder=2)
+                ax.plot(xs, ys, color=C["border"], lw=0.5,
+                        alpha=0.7, zorder=3)
+
+        if geom.geom_type == "Polygon":
+            draw_poly(geom)
+        elif geom.geom_type == "MultiPolygon":
+            for g in geom.geoms:
+                draw_poly(g)
+
+        if label_codes:
+            cx, cy = row["centroid_lon"], row["centroid_lat"]
+            ax.text(cx, cy, row["state_code"], ha="center", va="center", color="white", zorder=6, path_effects=[pe.withStroke(linewidth=1.2, foreground="black")])
+
+
+def plot_us_density(gdf: gpd.GeoDataFrame, us_cities_gdf: gpd.GeoDataFrame, fname):
+    path = os.path.join(OUTPUT_DIR, fname)
+    
+    fig, ax = plt.subplots(1, 1, figsize=(16, 12), facecolor=C["bg"])
+    fig.suptitle("Choropleth: Population Density (people/km2)", fontsize=16, color=C["text"], y=0.97)
+
+    setup_map_ax(ax, US_EXTENT, "")
+
+    cmap_d = LinearSegmentedColormap.from_list("us_dens", ["#0D2A4E","#1565C0","#FFA000","#E53935","#7B1FA2"])
+    norm_d = LogNorm(vmin=gdf["density"].clip(lower=0.5).min(), vmax=gdf["density"].max())
+    draw_state_polygons(ax, gdf, "density", cmap_d, norm_d, label_codes=True, alpha=0.90)
+
+    top_cities = us_cities_gdf.nlargest(30, "population")
+    ax.scatter(top_cities["lon"], top_cities["lat"], s=top_cities["population"]/50000,
+               c="white", edgecolors=C["gold"], linewidths=0.8, zorder=8, alpha=0.9)
+    
+    for _, r in us_cities_gdf.nlargest(8, "population").iterrows():
+        if US_EXTENT[0] < r["lon"] < US_EXTENT[1] and US_EXTENT[2] < r["lat"] < US_EXTENT[3]:
+            ax.annotate(r["name"], (r["lon"], r["lat"]), xytext=(3,3), textcoords="offset points",
+                        color=C["gold"], zorder=9, path_effects=[pe.withStroke(linewidth=1.2, foreground=C["bg"])])
+
+    sm = ScalarMappable(cmap=cmap_d, norm=norm_d)
+    sm.set_array([])
+    cb = fig.colorbar(sm, ax=ax, fraction=0.025, pad=0.01)
+    cb.set_label("Density (people/km2)", color=C["text"])
+    cb.ax.yaxis.set_tick_params(color=C["sub"])
+    plt.setp(cb.ax.yaxis.get_ticklabels(), color=C["sub"])
+
+    fig.subplots_adjust(left=0.06, right=0.94, bottom=0.07, top=0.93)
+    plt.savefig(path)
+    plt.close(fig)
+
+
+def plot_us_clusters(gdf: gpd.GeoDataFrame, ml_res: dict, fname):    
+    path = os.path.join(OUTPUT_DIR, fname)
+    best_k = ml_res["best_k"]
+    
+    fig, ax_map = plt.subplots(1, 1, figsize=(20, 12), facecolor=C["bg"])
+    fig.suptitle(f"K-Means (K={best_k}): geo-demographic clusters", fontsize=16, color=C["text"], y=0.97)
+
+    setup_map_ax(ax_map, US_EXTENT, "")
+
+    for _, row in gdf.iterrows():
+        geom = row.geometry
+        if geom is None or geom.is_empty: continue
+        color = CLUST_COLORS[int(row["cluster"]) % len(CLUST_COLORS)]
+
+        def draw_poly_k(poly):
+            if isinstance(poly, Polygon) and not poly.is_empty:
+                xs, ys = poly.exterior.xy
+                ax_map.fill(xs, ys, color=color, alpha=0.85, zorder=2)
+                ax_map.plot(xs, ys, color=C["border"], lw=0.5, alpha=0.7, zorder=3)
+
+        if geom.geom_type == "Polygon":
+            draw_poly_k(geom)
+        elif geom.geom_type == "MultiPolygon":
+            for g in geom.geoms:
+                draw_poly_k(g)
+
+        ax_map.text(row["centroid_lon"], row["centroid_lat"],
+                    row["state_code"], ha="center", va="center", color="white", zorder=6,
+                    path_effects=[pe.withStroke(linewidth=1.2, foreground="black")])
+
+    handles = [mpatches.Patch(
+        color=CLUST_COLORS[c % len(CLUST_COLORS)], alpha=0.85,
+        label=f"Cluster{c}: {gdf[gdf['cluster']==c]['cluster_name'].iloc[0]} "
+              f"(N={len(gdf[gdf['cluster']==c])})")
+        for c in range(best_k)]
+    ax_map.legend(handles=handles, loc="lower left", facecolor=C["panel"], edgecolor=C["border"], labelcolor=C["text"], framealpha=0.9)
+
+    fig.subplots_adjust(left=0.06, right=0.94, bottom=0.07, top=0.93)
+    plt.savefig(path)
+    plt.close(fig)
+
+
+
+
+
+
+
 
 
 if __name__ == "__main__":

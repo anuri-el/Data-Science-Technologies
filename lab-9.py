@@ -5,44 +5,39 @@ import alphashape
 import geopandas as gpd
 import geonamescache
 import matplotlib.pyplot as plt
-import matplotlib.gridspec as gridspec
 import matplotlib.patheffects as pe
 from matplotlib.cm import ScalarMappable
 import matplotlib.patches as mpatches
 from matplotlib.ticker import FuncFormatter
-from matplotlib.colors import ListedColormap, LinearSegmentedColormap, LogNorm, Normalize
+from matplotlib.colors import LinearSegmentedColormap, LogNorm, Normalize
 from shapely.geometry import Point, MultiPoint, Polygon
-from sklearn.preprocessing import StandardScaler, MinMaxScaler, Normalizer
-from sklearn.metrics import confusion_matrix, silhouette_score
+from sklearn.preprocessing import StandardScaler, MinMaxScaler
+from sklearn.metrics import silhouette_score
 from sklearn.neighbors import KNeighborsClassifier, NearestNeighbors
 from sklearn.decomposition import PCA
-from sklearn.cluster import KMeans, AgglomerativeClustering, DBSCAN
+from sklearn.cluster import KMeans, AgglomerativeClustering
 from scipy.ndimage import gaussian_filter
-
-
-from pathlib import Path
-OUT_DIR = Path("outputs")
-
-
 
 gc = geonamescache.GeonamesCache()
 
 
-SEP = "=" * 67
+SEP = "=" * 75
 
-OUTPUT_DIR  = "outputs"
+OUTPUT_DIR = "outputs"
 os.makedirs(OUTPUT_DIR, exist_ok=True)
+
+OUT_GPKG = os.path.join(OUTPUT_DIR, "l9_us_states_density.gpkg")
+OUT_CSV = os.path.join(OUTPUT_DIR, "l9_us_states_density.csv")
+OUT_CITIES = os.path.join(OUTPUT_DIR, "l9_us_cities_geonames.csv")
 
 
 C = dict(
     bg="#0A0E1A", ocean="#0D1B2E", land="#1C2E4A",
     border="#4A6080", text="#E8EDF8", sub="#7A8BA0",
-    grid="#1A2438", panel="#101828",
+    grid="#1A2438", panel="#101828", 
     c0="#2196F3", c1="#FF9800", c2="#4CAF50", c3="#E91E63",
-    c4="#9C27B0", c5="#00BCD4", c6="#FF5722", c7="#8BC34A",
-    gold="#FFD700", good="#4CAF50", bad="#EF5350",
+    c4="#9C27B0", c5="#00BCD4", c6="#FF5722", gold="#FFD700"
 )
-PAL8   = [C[f"c{i}"] for i in range(8)]
 
 CLUST_COLORS = ["#2196F3","#FF9800","#4CAF50","#E91E63","#9C27B0","#00BCD4"]
 US_EXTENT = (-125, -65, 24, 50)
@@ -70,11 +65,17 @@ def main():
 
 
     print(f"\n{SEP}")
-    print("State Polygons")
-
     gdf = build_state_polygons(us_cities_gdf, us_states_meta)
-
-    print(f"Unit verification (official vs geometric area):")
+    
+    t_pop = gdf["pop_official"].sum()
+    t_area = gdf["area_official"].sum()
+    print(f"Total population: {t_pop:>15,} people")
+    print(f"Total area: {t_area:>15,} km2")
+    print(f"Average density: {gdf['density'].mean():>11.2f} people/km2")
+    print(f"Median density: {gdf['density'].median():>11.2f} people/km2")
+    
+    
+    print(f"\nUnit verification (official vs geometric area):")
     print(f"{'State':<22} {'Official km2':>12}  {'Computed km2':>13}  {'Δ%':>7}  {'Density people/km2':>14}")
     for _, r in gdf.nlargest(15, "density").iterrows():
         if r["area_official"] > 0:
@@ -88,17 +89,17 @@ def main():
     sils = ml_res['sils']
     knn_acc = ml_res.get('knn_acc', 0) 
 
-    print(f"\nOptimal K (Silhouette max={max(sils):.4f}): K={best_k}")
+    print(f"Optimal K (Silhouette max={max(sils):.4f}): K={best_k}")
     print(f"KNN classifier (k=5): accuracy {knn_acc:.1f}%")
+    
     print(f"\nK-Means Cluster Profile (K={best_k}):")
-    print(f"  {'Cluster':>8} {'N':>4}  {'Avg.Dens':>11}  {'Avg.Pop':>12}  Representatives")
-
+    print(f"{'Cluster':>8} {'N':>4}  {'Avg.Dens':>11}  {'Avg.Pop':>12}  Representatives")
     for cl in range(best_k):
         sub = gdf[gdf["cluster"] == cl]
         dens_m = sub["density"].mean()
         pop_m = sub["pop_official"].mean()
         reps = ", ".join(sub.nlargest(3, "pop_official")["state_code"].tolist())
-        print(f"  {cl:>8} {len(sub):>4}  {dens_m:>11.2f}  {pop_m:>12,.0f}  {reps}")
+        print(f"{cl:>8} {len(sub):>4}  {dens_m:>11.2f}  {pop_m:>12,.0f}  {reps}")
     
     print(f"\nAverage KNN distance between state centroids: {gdf['knn_avg_dist_km'].mean():.0f} km")
 
@@ -107,22 +108,36 @@ def main():
     print("Population Density of European Counties")
     eu_analysis = build_europe_analysis(eu_cities_gdf, eu_countries)
     
-    print(f"Countries in sample: {len(eu_analysis)}")
     print(f"\nTop-10 by density:")
     for _, r in eu_analysis.nlargest(10, "density").iterrows():
         print(f"{r['name']:<17}: {r['density']:>6.1f} people/km2  (pop. {r['population']/1e6:.2f}M, area {r['area_km2']:,.0f} km2)")
+
+
+
+    print(f"\n{SEP}")
+    cols_save = ["state_code","state_name","n_cities","pop_official", "area_official","area_computed_km2","density",
+                 "cluster","cluster_name","knn_avg_dist_km","geometry"]
+    gdf[[c for c in cols_save if c in gdf.columns]].to_file(OUT_GPKG, driver="GPKG")
+    print(f"GeoPackage: {OUT_GPKG}")
+
+    gdf.drop(columns=["geometry","pca1","pca2"], errors="ignore").to_csv(str(OUT_CSV), index=False, encoding="utf-8-sig")
+    print(f"CSV: {OUT_CSV}")
+
+    us_cities_gdf.drop(columns=["geometry"], errors="ignore").to_csv(str(OUT_CITIES), index=False, encoding="utf-8-sig")
+    print(f"Cities CSV: {OUT_CITIES}")
 
 
     plot_us_density(gdf, us_cities_gdf, "l9_us_density.png")
     plot_us_clusters(gdf, ml_res, "l9_us_clusters.png")
     plot_us_centroids_knn(gdf, ml_res, "l9_us_centroids_knn.png")
     plot_us_kde(gdf, us_cities_gdf, "l9_us_kde.png")
-
-
+    plot_europe_cities_map(eu_cities_gdf, eu_analysis,"l9_europe_cities_map.png")
+    plot_top10_density_comparison(gdf, eu_analysis,"l9_top10_density_comparison.png")
+    plot_density_distribution_histogram(gdf, eu_analysis,"l9_density_distribution_histogram.png")
 
 
 def load_real_data():
-    all_cities  = gc.get_cities()
+    all_cities = gc.get_cities()
     all_countries = gc.get_countries()
     us_states_raw = gc.get_us_states()
 
@@ -358,7 +373,6 @@ def build_europe_analysis(eu_cities_gdf: gpd.GeoDataFrame, eu_countries: dict):
     return gdf
 
 
-
 def sax(ax, title="", xl="", yl=""):
     ax.set_facecolor(C["panel"])
     ax.tick_params(colors=C["sub"], labelsize=8)
@@ -467,7 +481,7 @@ def plot_us_density(gdf: gpd.GeoDataFrame, us_cities_gdf: gpd.GeoDataFrame, fnam
     plt.close(fig)
 
 
-def plot_us_clusters(gdf: gpd.GeoDataFrame, ml_res: dict, fname):    
+def plot_us_clusters(gdf: gpd.GeoDataFrame, ml_res: dict, fname):
     path = os.path.join(OUTPUT_DIR, fname)
     best_k = ml_res["best_k"]
     
@@ -623,6 +637,92 @@ def plot_us_kde(gdf: gpd.GeoDataFrame, us_cities_gdf: gpd.GeoDataFrame, fname):
     plt.setp(cb.ax.yaxis.get_ticklabels(), color=C["sub"])
 
     fig.subplots_adjust(left=0.06, right=0.94, bottom=0.07, top=0.93)
+    plt.savefig(path)
+    plt.close(fig)
+
+
+def plot_europe_cities_map(eu_cities_gdf: gpd.GeoDataFrame, eu_analysis: pd.DataFrame, fname):
+    path = os.path.join(OUTPUT_DIR, fname)
+
+    fig, ax = plt.subplots(1, 1, figsize=(16, 10), facecolor=C["bg"])
+    fig.suptitle("European Cities Population Density Map", fontsize=16, color=C["text"], y=0.97)
+
+    setup_map_ax(ax, EU_EXTENT, "" "")
+    
+    cmap_eu = LinearSegmentedColormap.from_list("eu", ["#0D2A4E", "#1565C0", "#FFA000", "#E53935"])
+    eu_dens_map = eu_analysis.set_index("iso")["density"].to_dict()
+    eu_norm = LogNorm(vmin=max(1, eu_analysis["density"].min()), vmax=eu_analysis["density"].max())
+    
+    eu_cities_filt = eu_cities_gdf[
+        (eu_cities_gdf["lon"] > EU_EXTENT[0]) &
+        (eu_cities_gdf["lon"] < EU_EXTENT[1]) &
+        (eu_cities_gdf["lat"] > EU_EXTENT[2]) &
+        (eu_cities_gdf["lat"] < EU_EXTENT[3])
+    ]
+    
+    city_colors = [cmap_eu(eu_norm(max(1, eu_dens_map.get(r["countrycode"], 50)))) for _, r in eu_cities_filt.iterrows()]
+    city_sizes = (eu_cities_filt["population"] / 30000).clip(5, 250)
+    
+    ax.scatter(eu_cities_filt["lon"], eu_cities_filt["lat"], s=city_sizes, c=city_colors, alpha=0.75, edgecolors="none", zorder=4)
+    
+    for _, r in eu_cities_filt.nlargest(10, "population").iterrows():
+        ax.annotate(r["name"], (r["lon"], r["lat"]), xytext=(3, 3), textcoords="offset points", color=C["text"],
+                    path_effects=[pe.withStroke(linewidth=1.2, foreground=C["bg"])], zorder=8)
+    
+    sm = ScalarMappable(cmap=cmap_eu, norm=eu_norm)
+    sm.set_array([])
+    cb = fig.colorbar(sm, ax=ax, fraction=0.025, pad=0.01)
+    cb.set_label("Country density (people/km2)", color=C["text"], fontsize=8)
+    cb.ax.yaxis.set_tick_params(color=C["sub"])
+    plt.setp(cb.ax.yaxis.get_ticklabels(), color=C["sub"])
+
+    plt.tight_layout()
+    plt.savefig(path)
+    plt.close(fig)
+
+
+def plot_top10_density_comparison(gdf: gpd.GeoDataFrame, eu_analysis: pd.DataFrame, fname):
+    path = os.path.join(OUTPUT_DIR, fname)
+    
+    fig, ax = plt.subplots(1, 1, figsize=(12, 8), facecolor=C["bg"])
+    ax.set_facecolor(C["panel"])
+    
+    eu_top10 = eu_analysis.nlargest(10, "density")
+    us_top10 = gdf.nlargest(10, "density")
+    y_pos = np.arange(10)
+    
+    ax.barh(y_pos + 0.2, eu_top10["density"].values, 0.35, color=C["c3"], alpha=0.85, label="Top-10 Europe")
+    ax.barh(y_pos - 0.2, us_top10["density"].values, 0.35, color=C["c0"], alpha=0.85, label="Top-10 US")
+    ax.set_yticks(y_pos)
+    ax.set_yticklabels([f"{e}/{u}" for e, u in zip(eu_top10["iso"].tolist(), us_top10["state_code"].tolist())], color=C["text"])
+    
+    sax(ax, "Density: Top-10 Europe vs US", "people/km2", "Region")
+    ax.legend(facecolor=C["panel"], edgecolor=C["grid"], labelcolor=C["text"])
+    
+    plt.tight_layout()
+    plt.savefig(path)
+    plt.close(fig)
+
+
+def plot_density_distribution_histogram(gdf: gpd.GeoDataFrame, eu_analysis: pd.DataFrame, fname):
+    path = os.path.join(OUTPUT_DIR, fname)
+    
+    fig, ax = plt.subplots(1, 1, figsize=(12, 8), facecolor=C["bg"])
+    ax.set_facecolor(C["panel"])
+    
+    bins = np.linspace(0, 600, 40)
+    ax.hist(eu_analysis["density"].clip(0, 600), bins=bins, density=True, alpha=0.65, color=C["c3"],
+            edgecolor=C["grid"], label=f"Europe Countries (N={len(eu_analysis)})")
+    ax.hist(gdf["density"].clip(0, 600), bins=bins, density=True, alpha=0.65, color=C["c0"],
+            edgecolor=C["grid"], label=f"US States (N={len(gdf)})")
+    
+    ax.axvline(eu_analysis["density"].mean(), color=C["c3"], lw=2.0, ls="--", label=f"EU Avg: {eu_analysis['density'].mean():.1f}")
+    ax.axvline(gdf["density"].mean(), color=C["c0"], lw=2.0, ls="--", label=f"US Avg: {gdf['density'].mean():.1f}")
+    
+    sax(ax, "Density Distribution: European Countries vs US States", "Population Density (people/km2)", "Density Distribution")
+    ax.legend(facecolor=C["panel"], edgecolor=C["grid"], labelcolor=C["text"], ncol=2)
+    
+    plt.tight_layout()
     plt.savefig(path)
     plt.close(fig)
 

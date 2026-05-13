@@ -5,17 +5,24 @@ import alphashape
 import geopandas as gpd
 import geonamescache
 import matplotlib.pyplot as plt
+import matplotlib.gridspec as gridspec
 import matplotlib.patheffects as pe
-from matplotlib.ticker import FuncFormatter
 from matplotlib.cm import ScalarMappable
 import matplotlib.patches as mpatches
-from matplotlib.colors import ListedColormap, LinearSegmentedColormap, LogNorm
+from matplotlib.ticker import FuncFormatter
+from matplotlib.colors import ListedColormap, LinearSegmentedColormap, LogNorm, Normalize
 from shapely.geometry import Point, MultiPoint, Polygon
-from sklearn.preprocessing import StandardScaler
+from sklearn.preprocessing import StandardScaler, MinMaxScaler, Normalizer
 from sklearn.metrics import confusion_matrix, silhouette_score
 from sklearn.neighbors import KNeighborsClassifier, NearestNeighbors
 from sklearn.decomposition import PCA
 from sklearn.cluster import KMeans, AgglomerativeClustering, DBSCAN
+from scipy.ndimage import gaussian_filter
+
+
+from pathlib import Path
+OUT_DIR = Path("outputs")
+
 
 
 gc = geonamescache.GeonamesCache()
@@ -42,7 +49,7 @@ US_EXTENT = (-125, -65, 24, 50)
 EU_EXTENT = (-12,  35,  34, 72)
 
 
-def main() -> None:
+def main():
     print(f"\n{SEP}")
     print("Level II")
 
@@ -97,11 +104,20 @@ def main() -> None:
 
 
     print(f"\n{SEP}")
-
+    print("Population Density of European Counties")
+    eu_analysis = build_europe_analysis(eu_cities_gdf, eu_countries)
+    
+    print(f"Countries in sample: {len(eu_analysis)}")
+    print(f"\nTop-10 by density:")
+    for _, r in eu_analysis.nlargest(10, "density").iterrows():
+        print(f"{r['name']:<17}: {r['density']:>6.1f} people/km2  (pop. {r['population']/1e6:.2f}M, area {r['area_km2']:,.0f} km2)")
 
 
     plot_us_density(gdf, us_cities_gdf, "l9_us_density.png")
     plot_us_clusters(gdf, ml_res, "l9_us_clusters.png")
+    plot_us_centroids_knn(gdf, ml_res, "l9_us_centroids_knn.png")
+    plot_us_kde(gdf, us_cities_gdf, "l9_us_kde.png")
+
 
 
 
@@ -268,7 +284,7 @@ def cluster_states(gdf: gpd.GeoDataFrame):
     
     gdf["knn_avg_dist_km"] = dists_knn[:, 1:].mean(axis=1) * 6371
 
-    split   = int(len(X_sc) * 0.75)
+    split = int(len(X_sc) * 0.75)
     knn_clf = KNeighborsClassifier(n_neighbors=5, metric="euclidean")
     knn_clf.fit(X_sc[:split], gdf["cluster"].values[:split])
     gdf["knn_pred"] = knn_clf.predict(X_sc)
@@ -290,14 +306,56 @@ def cluster_states(gdf: gpd.GeoDataFrame):
     return gdf, ml_res
 
 
+def compute_us_kde(us_cities_gdf: gpd.GeoDataFrame, grid_res: int = 300):
+    lon_min, lon_max = -125, -65
+    lat_min, lat_max = 24, 50
+
+    lon_g = np.linspace(lon_min, lon_max, grid_res)
+    lat_g = np.linspace(lat_min, lat_max, grid_res)
+    LON, LAT = np.meshgrid(lon_g, lat_g)
+    KDE = np.zeros((grid_res, grid_res), dtype=float)
+
+    mask = ((us_cities_gdf["lon"] > lon_min) &
+            (us_cities_gdf["lon"] < lon_max) &
+            (us_cities_gdf["lat"] > lat_min) &
+            (us_cities_gdf["lat"] < lat_max))
+    cities_cont = us_cities_gdf[mask]
+
+    sigma = 1.5
+    for _, row in cities_cont.iterrows():
+        w = row["population"] / 1e5
+        KDE += w * np.exp(-(((LON - row["lon"])**2 + (LAT - row["lat"])**2) / (2 * sigma**2)))
+
+    KDE = gaussian_filter(KDE, sigma=3)
+    return LON, LAT, KDE
 
 
+def build_europe_analysis(eu_cities_gdf: gpd.GeoDataFrame, eu_countries: dict):
+    records = []
+    for iso, cdata in eu_countries.items():
+        sub = eu_cities_gdf[eu_cities_gdf["countrycode"] == iso]
+        if len(sub) < 2:
+            continue
+        area = cdata["areakm2"]
+        pop = cdata["population"]
+        records.append(dict(
+            iso = iso,
+            iso3 = cdata.get("iso3",""),
+            name = cdata["name"],
+            capital = cdata["capital"],
+            population = pop,
+            area_km2 = area,
+            density = pop / max(area, 1),
+            n_cities = len(sub),
+            city_pop_sum = sub["population"].sum(),
+            centroid_lon = sub["lon"].mean(),
+            centroid_lat = sub["lat"].mean(),
+        ))
 
+    gdf = pd.DataFrame(records)
+    gdf["log_density"] = np.log1p(gdf["density"])
 
-
-
-
-
+    return gdf
 
 
 
@@ -451,11 +509,122 @@ def plot_us_clusters(gdf: gpd.GeoDataFrame, ml_res: dict, fname):
     plt.close(fig)
 
 
+def plot_us_centroids_knn(gdf: gpd.GeoDataFrame, ml_res: dict, fname):
+    path = os.path.join(OUTPUT_DIR, fname)
+    fig, axes = plt.subplots(1, 2, figsize=(26, 10), facecolor=C["bg"])
+    fig.suptitle("Centroid = population-weighted mean center of cities", fontsize=16, color=C["text"])
+
+    ax_map = axes[0]
+    setup_map_ax(ax_map, US_EXTENT, "State Centroids + KNN (k=4)")
+
+    for _, row in gdf.iterrows():
+        geom = row.geometry
+        if geom is None or geom.is_empty: 
+            continue
+        
+        def draw_bg(poly):
+            if isinstance(poly, Polygon) and not poly.is_empty:
+                xs, ys = poly.exterior.xy
+                ax_map.fill(xs, ys, color=C["land"], alpha=0.50, zorder=1)
+                ax_map.plot(xs, ys, color=C["border"], lw=0.5, alpha=0.7, zorder=2)
+        
+        if geom.geom_type == "Polygon":
+            draw_bg(geom)
+        elif geom.geom_type == "MultiPolygon":
+            for g in geom.geoms:
+                draw_bg(g)
+
+    idx_knn = ml_res["idx_knn"]
+    dists_knn = ml_res["dists_knn"]
+    
+    for i, (_, row) in enumerate(gdf.iterrows()):
+        for j_idx in idx_knn[i][1:3]:
+            if j_idx >= len(gdf): 
+                continue
+            nb = gdf.iloc[j_idx]
+            d_km = dists_knn[i, idx_knn[i].tolist().index(j_idx)] * 6371
+            lw = max(0.4, 1.5 - d_km/1500)
+            ax_map.plot([row["centroid_lon"], nb["centroid_lon"]], [row["centroid_lat"], nb["centroid_lat"]], color=C["c5"], lw=lw, alpha=0.35, zorder=3)
+
+    pop_sz = MinMaxScaler((20, 400)).fit_transform(gdf["pop_official"].values.reshape(-1, 1)).ravel()
+    dens_n = Normalize(vmin=gdf["density"].min(), vmax=gdf["density"].max())
+    cmap_sc = plt.cm.plasma
+
+    sc = ax_map.scatter(gdf["centroid_lon"], gdf["centroid_lat"], s=pop_sz, c=gdf["density"], cmap=cmap_sc, norm=dens_n, alpha=0.90, edgecolors="white", linewidths=0.8, zorder=7)
+    
+    for _, r in gdf.nlargest(10, "pop_official").iterrows():
+        if US_EXTENT[0] < r["centroid_lon"] < US_EXTENT[1]:
+            ax_map.annotate(r["state_code"], (r["centroid_lon"], r["centroid_lat"]), xytext=(3,3), textcoords="offset points",
+                            color=C["text"], path_effects=[pe.withStroke(linewidth=1.2, foreground=C["bg"])], zorder=9)
+    
+    cb = fig.colorbar(sc, ax=ax_map, fraction=0.025, pad=0.01)
+    cb.set_label("Density (people/km2)", color=C["text"])
+    cb.ax.yaxis.set_tick_params(color=C["sub"])
+    plt.setp(cb.ax.yaxis.get_ticklabels(), color=C["sub"])
+    
+    ax_bar = axes[1]
+    ax_bar.set_facecolor(C["panel"])
+    
+    knn_df = gdf[["state_code", "knn_avg_dist_km", "cluster"]].sort_values("knn_avg_dist_km", ascending=False).head(30)
+    clrs_b = [CLUST_COLORS[int(c) % len(CLUST_COLORS)] for c in knn_df["cluster"]]
+    
+    ax_bar.barh(knn_df["state_code"], knn_df["knn_avg_dist_km"], color=clrs_b, alpha=0.85, edgecolor=C["grid"])
+    ax_bar.axvline(gdf["knn_avg_dist_km"].mean(), color=C["gold"], lw=1.8, ls="--", label=f"Average: {gdf['knn_avg_dist_km'].mean():.0f} km")
+    
+    sax(ax_bar, "KNN (k=4): Average distance to neighbors", "km (haversine)", "State")
+    ax_bar.legend(facecolor=C["panel"], edgecolor=C["grid"], labelcolor=C["text"])
+
+    fig.subplots_adjust(left=0.06, right=0.94, bottom=0.07, top=0.93)
+    plt.savefig(path)
+    plt.close(fig)
 
 
+def plot_us_kde(gdf: gpd.GeoDataFrame, us_cities_gdf: gpd.GeoDataFrame, fname):
+    path = os.path.join(OUTPUT_DIR, fname)
+    LON, LAT, KDE = compute_us_kde(us_cities_gdf, grid_res=280)
 
+    fig, ax_map = plt.subplots(1, 1, figsize=(20, 12), facecolor=C["bg"])
+    fig.suptitle("KDE surface (population-weighted cities)", fontsize=16, color=C["text"], y=0.97)
 
+    setup_map_ax(ax_map, US_EXTENT, "")
 
+    cmap_kde = LinearSegmentedColormap.from_list("kde_us", ["#050A14","#0D2A4E","#1565C0","#FFA000","#E53935","#7B1FA2"])
+    kde_masked = np.ma.masked_where(KDE < KDE.max()*0.005, KDE)
+    im = ax_map.pcolormesh(LON, LAT, kde_masked, cmap=cmap_kde, alpha=0.88, shading="auto", zorder=3)
+
+    levels = np.percentile(KDE[KDE > 0], [60, 80, 92, 98])
+    ax_map.contour(LON, LAT, KDE, levels=levels, colors=[C["text"]], linewidths=0.7, alpha=0.45, zorder=5)
+
+    for _, row in gdf.iterrows():
+        geom = row.geometry
+        if geom is None or geom.is_empty:
+            continue
+        
+        def draw_outline(poly):
+            if isinstance(poly, Polygon) and not poly.is_empty:
+                xs, ys = poly.exterior.xy
+                ax_map.plot(xs, ys, color=C["border"], lw=0.6, alpha=0.5, zorder=6)
+        
+        if geom.geom_type == "Polygon":
+            draw_outline(geom)
+        elif geom.geom_type == "MultiPolygon":
+            for g in geom.geoms:
+                draw_outline(g)
+
+    for _, r in us_cities_gdf.nlargest(8, "population").iterrows():
+        if US_EXTENT[0] < r["lon"] < US_EXTENT[1] and US_EXTENT[2] < r["lat"] < US_EXTENT[3]:
+            ax_map.scatter(r["lon"], r["lat"], s=60, c=C["gold"], edgecolors="white", linewidths=0.8, zorder=9)
+            ax_map.annotate(r["name"], (r["lon"], r["lat"]), xytext=(4,4), textcoords="offset points", color=C["gold"],
+                            zorder=10, path_effects=[pe.withStroke(linewidth=1.5, foreground=C["bg"])])
+
+    cb = fig.colorbar(im, ax=ax_map, fraction=0.025, pad=0.01)
+    cb.set_label("KDE density (weighted)", color=C["text"])
+    cb.ax.yaxis.set_tick_params(color=C["sub"])
+    plt.setp(cb.ax.yaxis.get_ticklabels(), color=C["sub"])
+
+    fig.subplots_adjust(left=0.06, right=0.94, bottom=0.07, top=0.93)
+    plt.savefig(path)
+    plt.close(fig)
 
 
 if __name__ == "__main__":

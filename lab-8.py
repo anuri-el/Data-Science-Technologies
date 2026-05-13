@@ -3,7 +3,7 @@ import time
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
-from matplotlib.colors import ListedColormap
+from matplotlib.colors import ListedColormap, LinearSegmentedColormap
 from scipy.cluster.hierarchy import linkage, dendrogram
 from sklearn.preprocessing import StandardScaler
 from sklearn.ensemble import IsolationForest, RandomForestClassifier, GradientBoostingClassifier
@@ -14,7 +14,6 @@ from sklearn.neighbors import KNeighborsClassifier, NearestNeighbors
 from sklearn.decomposition import PCA
 from sklearn.svm import SVC
 from sklearn.cluster import KMeans, DBSCAN, AgglomerativeClustering
-from matplotlib.colors import LinearSegmentedColormap
 
 
 SEP = "=" * 67
@@ -24,6 +23,7 @@ os.makedirs(OUTPUT_DIR, exist_ok=True)
 
 DATA_PATH = os.path.join(OUTPUT_DIR, "sample_data.xlsx")
 DESC_PATH = os.path.join(OUTPUT_DIR, "Datdata_descriptiona_Set_7.xlsx")
+OUTPUT_CSV = os.path.join(OUTPUT_DIR, "l8_scoring_results.csv")
 
 REF_DATE  = pd.Timestamp("2021-02-01")
 
@@ -148,19 +148,20 @@ def main():
     df["binary_decision"] = df["ml_prediction"]
 
 
+    out_cols = ["id","loan_amount","loan_days","age","monthly_income", "dti","score_raw","rating","recommendation",
+                "fraud_score","fraud_risk", "binary_decision","ml_probability","target","cluster"]
+    df[out_cols].to_csv(OUTPUT_CSV, index=False, encoding="utf-8-sig")
+
+
     plot_eda_score_distribution(df, "l8_score_distribution.png")
     plot_eda_income_vs_score(df, "l8_income_vs_score.png")
     plot_eda_dti_vs_score(df, "l8_dti_vs_score.png")
-
     plot_fraud_score_distribution(df, "l8_fraud_score_distribution.png")
     plot_fraud_isolation_forest(df, "l8_fraud_isolation_forest.png")
-
     plot_ml_confusion_matrix(clf_res, "l8_ml_confusion_matrix.png")
-
     plot_clustering_pca_target(df, clu_res, "l8_clustering_pca_target.png")
     plot_clustering_dendrogram(clu_res, "l8_clustering_dendrogram.png")
     plot_clustering_pca_3d(clu_res, "l8_clustering_pca_3d.png")
-
 
 
 def load_data():
@@ -589,8 +590,6 @@ def plot_eda_dti_vs_score(df, fname):
     plt.close(fig)
 
 
-
-
 def plot_fraud_score_distribution(df, fname):
     fig, ax = plt.subplots(figsize=(12, 6), facecolor=C["bg"])
     ax.hist(df["fraud_score"], bins=range(0, df["fraud_score"].max() + 2), color=C["c1"], alpha=0.85, edgecolor=C["grid"], align="left", rwidth=0.8)
@@ -687,7 +686,8 @@ def plot_clustering_dendrogram(clu_res, fname):
     
     ax.set_facecolor(C["panel"])
     ax.tick_params(colors=C["sub"])
-    for spine in ax.spines.values(): spine.set_edgecolor(C["grid"])
+    for spine in ax.spines.values():
+        spine.set_edgecolor(C["grid"])
     ax.set_title("Dendrogram (Ward linkage, 100 observations)", color=C["text"], pad=10)
     ax.set_xlabel("Application ID", color=C["sub"])
     ax.set_ylabel("Distance", color=C["sub"])
@@ -729,7 +729,6 @@ def plot_clustering_pca_3d(clu_res, fname):
     path = os.path.join(OUTPUT_DIR, fname)
     plt.savefig(path)
     plt.close(fig)
-
 
 
 if __name__ == "__main__":

@@ -64,7 +64,8 @@ def main():
     new_feats = ["age","job_tenure_months","addr_tenure_months","dti", "loan_to_income","daily_payment","expense_ratio",
                  "net_income","has_active_loans","is_repeat_client", "applied_night","applied_weekend"]
     for f in new_feats:
-        print(f"  {f:<20}: mean={df[f].mean():<10.3f}  std={df[f].std():.3f}")
+        if f in df.columns:
+            print(f"  {f:<20}: mean={df[f].mean():<10.3f}  std={df[f].std():.3f}")
 
 
     print(f"\n{SEP}")
@@ -87,16 +88,17 @@ def main():
 
 
     print(f"\n{SEP}")
-    
-    df = compute_scorecard(df)
+
+    df, approve_thresh = compute_scorecard(df)
     print(f"Score range: {df['score_raw'].min():.0f} - {df['score_raw'].max():.0f}")
     print(f"Average Score: {df['score_raw'].mean():.1f} +- {df['score_raw'].std():.1f}")
-    
-    print(f"\nFeature contribution to average score::")
+    print(f"Approval threshold (75th pct): {approve_thresh:.0f}")
+
+    print(f"\nFeature contribution to average score:")
     score_details = df["score_details"].iloc[0]
     for feat, val in sorted(score_details.items(), key=lambda x: abs(x[1]), reverse=True):
-        bar = "=" * int(abs(val) * 1.5) if abs(val) > 0 else ""
-        print(f"{feat:<20} {val:>+7.2f}  {bar}")
+        bar = "=" * int(abs(val) * 1) if abs(val) > 0 else ""
+        print(f"{feat:<20} {abs(val):>7.2f}  {bar}")
 
     print(f"\nRating categories:")
     rating_dist = df["rating"].value_counts().sort_index()
@@ -121,7 +123,7 @@ def main():
             continue
         print(f"{name:<18} {res['acc']:>8.2f} {res['f1']:>8.4f} {res['auc']:>8.4f} {res['cv']:>10.2f} {res['t_ms']:>8.1f}")
 
-    print(f"\nBest model (AUC): {clf_res['best']} (AUC={clf_res[clf_res['best']]['auc']:.4f})")
+    print(f"\nBest model (AUC+F1): {clf_res['best']} (AUC={clf_res[clf_res['best']]['auc']:.4f}, F1={clf_res[clf_res['best']]['f1']:.4f})")
 
     print(f"\nTop-10 features (Random Forest importance):")
     for feat, imp in clf_res['importances'].nlargest(10).items():
@@ -133,7 +135,7 @@ def main():
 
     clu_res  = cluster_borrowers(X_sc, df)
 
-    print(f"PCA: {clu_res['pca'].explained_variance_ratio_.cumsum()[-1]*100:.1f}% variance in 3 components")
+    print(f"PCA: {clu_res['pca'].explained_variance_ratio_.cumsum()[-1]*100:.1f}% variance in {clu_res['pca'].n_components_} components")
     print(f"Optimal K (Silhouette): {clu_res['best_k']}")
 
     print(f"\n{'Cluster':>9} {'N':>5}  {'Income':>10}  {'DTI':>8}  {'Score':>8}  {'Bad%':>7}  Profile")
@@ -153,9 +155,9 @@ def main():
     df[out_cols].to_csv(OUTPUT_CSV, index=False, encoding="utf-8-sig")
 
 
-    plot_eda_score_distribution(df, "l8_score_distribution.png")
-    plot_eda_income_vs_score(df, "l8_income_vs_score.png")
-    plot_eda_dti_vs_score(df, "l8_dti_vs_score.png")
+    plot_eda_score_distribution(df, "l8_score_distribution.png", approve_thresh)
+    plot_eda_income_vs_score(df, "l8_income_vs_score.png", approve_thresh)
+    plot_eda_dti_vs_score(df, "l8_dti_vs_score.png", approve_thresh)
     plot_fraud_score_distribution(df, "l8_fraud_score_distribution.png")
     plot_fraud_isolation_forest(df, "l8_fraud_isolation_forest.png")
     plot_ml_confusion_matrix(clf_res, "l8_ml_confusion_matrix.png")
@@ -186,13 +188,13 @@ def feature_engineering(df: pd.DataFrame):
 
     df["addr_tenure_months"] = ((REF_DATE - df["fact_addr_start_date"]).dt.days / 30.44).fillna(0).clip(lower=0).round(1)
 
-    df["dti"] = ((df["monthly_expenses"] + df["other_loans_about_monthly"].fillna(0)) / df["monthly_income"].replace(0, np.nan)).fillna(0).clip(0, 10)
+    df["dti"] = ((df["monthly_expenses"] + df["other_loans_about_monthly"].fillna(0)) / df["monthly_income"].replace(0, np.nan)).fillna(0).clip(0, 5)
 
     df["loan_to_income"] = (df["loan_amount"] / df["monthly_income"].replace(0, np.nan)).fillna(0).clip(0, 50)
 
     df["daily_payment"] = (df["loan_amount"] / df["loan_days"].replace(0, np.nan)).fillna(0)
 
-    df["expense_ratio"] = (df["monthly_expenses"] / df["monthly_income"].replace(0, np.nan)).fillna(0).clip(0, 10)
+    df["expense_ratio"] = (df["monthly_expenses"] / df["monthly_income"].replace(0, np.nan)).fillna(0).clip(0, 5)
 
     df["net_income"] = df["monthly_income"] - df["monthly_expenses"]
 
@@ -292,79 +294,81 @@ def detect_fraud(df: pd.DataFrame):
 
 SCORECARD = {
     "age": [
-        (lambda x: x < 22, -10, "< 22 years"),
-        (lambda x: (x >= 22) & (x < 25), 5, "22-24"),
-        (lambda x: (x >= 25) & (x < 35), 20, "25-34"),
-        (lambda x: (x >= 35) & (x < 50), 18, "35-49"),
-        (lambda x: x >= 50, 10, "50+"),
+        (lambda x: x < 22, -20, "< 22 years"),
+        (lambda x: (x >= 22) & (x < 25), 10, "22-24"),
+        (lambda x: (x >= 25) & (x < 35), 40, "25-34"),
+        (lambda x: (x >= 35) & (x < 50), 35, "35-49"),
+        (lambda x: x >= 50, 20, "50+"),
     ],
 
     "monthly_income": [
-        (lambda x: x < 5000, -15, "< 5000"),
-        (lambda x: (x >= 5000) & (x < 8000), 5, "5000-8000"),
-        (lambda x: (x >= 8000) & (x < 12000), 15, "8000-12000"),
-        (lambda x: (x >= 12000) & (x < 20000), 20, "12000-20000"),
-        (lambda x: x >= 20000, 15, "20000+"),
+        (lambda x: x < 5000, -30, "< 5000"),
+        (lambda x: (x >= 5000) & (x < 8000), 10, "5000-8000"),
+        (lambda x: (x >= 8000) & (x < 12000), 30, "8000-12000"),
+        (lambda x: (x >= 12000) & (x < 20000), 50, "12000-20000"),
+        (lambda x: x >= 20000, 40, "20000+"),
     ],
 
     "dti": [
-        (lambda x: x <= 0.30, 25, "≤ 0.30"),
-        (lambda x: (x > 0.30) & (x <= 0.50), 18, "0.30-0.50"),
-        (lambda x: (x > 0.50) & (x <= 0.70), 10, "0.50-0.70"),
+        (lambda x: x <= 0.30, 60, "≤ 0.30"),
+        (lambda x: (x > 0.30) & (x <= 0.50), 40, "0.30-0.50"),
+        (lambda x: (x > 0.50) & (x <= 0.70), 20, "0.50-0.70"),
         (lambda x: (x > 0.70) & (x <= 1.0), 0, "0.70-1.0"),
-        (lambda x: x > 1.0, -20, "> 1.0"),
+        (lambda x: x > 1.0, -40, "> 1.0"),
     ],
 
     "seniority_years": [
-        (lambda x: x < 1, -5, "< 1 year"),
-        (lambda x: (x >= 1) & (x < 3), 10, "1-2 years"),
-        (lambda x: (x >= 3) & (x < 7), 18, "3-6 years"),
-        (lambda x: x >= 7, 22, "7+ years"),
+        (lambda x: x < 1, -10, "< 1 year"),
+        (lambda x: (x >= 1) & (x < 3), 20, "1-2 years"),
+        (lambda x: (x >= 3) & (x < 7), 40, "3-6 years"),
+        (lambda x: x >= 7, 55, "7+ years"),
     ],
 
     "education_id": [
-        (lambda x: x == 1, -5, "None"),
-        (lambda x: x == 2, 5, "Below secondary"),
-        (lambda x: x == 3, 10, "Secondary"),
-        (lambda x: x == 4, 14, "Vocational/Technical"),
-        (lambda x: x == 5, 18, "Higher"),
-        (lambda x: x == 6, 22, "Academic degree"),
+        (lambda x: x == 1, -10, "None"),
+        (lambda x: x == 2, 10, "Below secondary"),
+        (lambda x: x == 3, 20, "Secondary"),
+        (lambda x: x == 4, 30, "Vocational/Technical"),
+        (lambda x: x == 5, 45, "Higher"),
+        (lambda x: x == 6, 60, "Academic degree"),
     ],
 
     "has_immovables": [
-        (lambda x: x == 1, 10, "Yes"),
-        (lambda x: x == 0, -5, "No"),
+        (lambda x: x == 1, 30, "Yes"),
+        (lambda x: x == 0, -10, "No"),
+        (lambda x: ~x.isin([0, 1]), 0, "Unknown"),
     ],
 
     "has_movables": [
-        (lambda x: x == 1, 8, "Yes"),
-        (lambda x: x == 0, -3, "No"),
+        (lambda x: x == 1,  20, "Yes"),
+        (lambda x: x == 0,  -5, "No"),
+        (lambda x: ~x.isin([0, 1]), 0, "Unknown"),
     ],
 
     "other_loans_active": [
-        (lambda x: x == 0, 12, "None"),
+        (lambda x: x == 0,  30, "None"),
         (lambda x: (x > 0) & (x <= 1), 0, "1"),
-        (lambda x: x > 1, -10, "2+"),
+        (lambda x: x > 1,  -25, "2+"),
     ],
 
     "loan_to_income": [
-        (lambda x: x <= 0.5, 20, "≤ 0.5"),
-        (lambda x: (x > 0.5) & (x <= 1.0), 15, "0.5-1.0"),
-        (lambda x: (x > 1.0) & (x <= 2.0), 8, "1.0-2.0"),
+        (lambda x: x <= 0.5,50, "≤ 0.5"),
+        (lambda x: (x > 0.5) & (x <= 1.0), 35, "0.5-1.0"),
+        (lambda x: (x > 1.0) & (x <= 2.0), 15, "1.0-2.0"),
         (lambda x: (x > 2.0) & (x <= 4.0), 0, "2.0-4.0"),
-        (lambda x: x > 4.0, -15, "> 4.0"),
+        (lambda x: x > 4.0,-30, "> 4.0"),
     ],
 
     "applied_night": [
-        (lambda x: x == 1, -5, "Night application"),
-        (lambda x: x == 0, 5, "Day application"),
+        (lambda x: x == 1, -10, "Night application"),
+        (lambda x: x == 0, 10, "Day application"),
     ],
 
     "fraud_score": [
-        (lambda x: x == 0, 10, "No fraud flags"),
+        (lambda x: x == 0, 20, "No fraud flags"),
         (lambda x: x == 1, 0, "1 flag"),
-        (lambda x: (x >= 2) & (x <= 3), -10, "2-3 flags"),
-        (lambda x: x > 3, -25, "> 3 flags"),
+        (lambda x: (x >= 2) & (x <= 3), -20, "2-3 flags"),
+        (lambda x: x > 3, -60, "> 3 flags"),
     ],
 }
 
@@ -390,25 +394,31 @@ def compute_scorecard(df: pd.DataFrame):
     scale = df["score_raw"].std() + 1e-9
     df["pd_estimate"] = 1 / (1 + np.exp((df["score_raw"] - center) / scale))
 
+    p = df["score_raw"].quantile([0.05, 0.20, 0.45, 0.75, 0.93]).values
+    bin_edges = [SCORE_MIN] + list(np.round(p).astype(int)) + [SCORE_MAX]
     df["rating"] = pd.cut(
         df["score_raw"],
-        bins=[SCORE_MIN, 300, 370, 430, 500, 580, SCORE_MAX],
-        labels=["HR","D","C","B","A","AA"],
-        include_lowest=True
+        bins=bin_edges,
+        labels=["HR", "D", "C", "B", "A", "AA"],
+        include_lowest=True,
+        duplicates="drop",
     )
 
+    approve_thresh = float(df["score_raw"].quantile(0.75))
+    conditional_thresh = float(df["score_raw"].quantile(0.45))
+    manual_thresh = float(df["score_raw"].quantile(0.20))
     conditions = [
-        df["score_raw"] >= 500,
-        df["score_raw"] >= 430,
-        df["score_raw"] >= 370,
-        df["score_raw"] < 370,
+        df["score_raw"] >= approve_thresh,
+        df["score_raw"] >= conditional_thresh,
+        df["score_raw"] >= manual_thresh,
+        df["score_raw"] < manual_thresh,
     ]
     choices = ["Approve", "Conditionally approve", "Requires manual review", "Reject"]
     df["recommendation"] = np.select(conditions, choices, default="Reject")
 
     df["score_details"] = [score_details] * len(df)
 
-    return df
+    return df, approve_thresh
 
 
 ML_FEATURES = [
@@ -425,9 +435,18 @@ ML_FEATURES = [
 ]
 
 def prepare_ml_data(df: pd.DataFrame):
-    X = df[ML_FEATURES].copy()
+    available = [f for f in ML_FEATURES if f in df.columns]
+    X = df[available].copy()
     for col in X.select_dtypes(include=[np.number]).columns:
         X[col] = X[col].fillna(X[col].median())
+
+    if "dti" in X.columns:
+        X["dti"] = X["dti"].clip(0, 2.0)
+
+    zero_var_cols = X.columns[X.std() == 0].tolist()
+    if zero_var_cols:
+        print(f"  Dropping zero-variance features: {zero_var_cols}")
+        X = X.drop(columns=zero_var_cols)
 
     y = df["target"].values
 
@@ -440,12 +459,13 @@ def prepare_ml_data(df: pd.DataFrame):
 def train_classifiers(X_sc: np.ndarray, y: np.ndarray):
     X_tr, X_te, y_tr, y_te = train_test_split(X_sc, y, test_size=0.25, random_state=42, stratify=y)
 
+    cw = {0: 1.0, 1: 0.4}
     models = {
-        "LogisticReg": LogisticRegression(max_iter=500, random_state=42, C=0.8),
+        "LogisticReg": LogisticRegression(max_iter=500, random_state=42, C=0.8, class_weight=cw),
         "KNN(k=7)": KNeighborsClassifier(n_neighbors=7, metric="euclidean"),
-        "SVM(RBF)": SVC(kernel="rbf", probability=True, random_state=42, C=1.0),
-        "RandomForest": RandomForestClassifier(n_estimators=150, random_state=42, max_depth=8, class_weight="balanced"),
-        "GradientBoost":  GradientBoostingClassifier(n_estimators=100, random_state=42, learning_rate=0.1),
+        "SVM(RBF)": SVC(kernel="rbf", probability=True, random_state=42, C=1.0, class_weight=cw),
+        "RandomForest": RandomForestClassifier(n_estimators=150, random_state=42, max_depth=8, class_weight=cw),
+        "GradientBoost": GradientBoostingClassifier(n_estimators=100, random_state=42, learning_rate=0.1),
     }
 
     results = {}
@@ -469,10 +489,15 @@ def train_classifiers(X_sc: np.ndarray, y: np.ndarray):
             y_te=y_te, t_ms=t_ms,
         )
 
-    best_name = max(results, key=lambda k: results[k]["auc"])
+    def composite(name):
+        r = results[name]
+        return 0.6 * r["auc"] + 0.4 * (r["acc"] / 100)
+
+    best_name = max(results, key=composite)
 
     rf = models["RandomForest"]
-    importances = pd.Series(rf.feature_importances_, index=ML_FEATURES)
+    feat_names = list(results["LogisticReg"]["model"].feature_names_in_) if hasattr(results["LogisticReg"]["model"], "feature_names_in_") else ML_FEATURES[:X_sc.shape[1]]
+    importances = pd.Series(rf.feature_importances_, index=rf.feature_names_in_ if hasattr(rf, "feature_names_in_") else feat_names)
 
     results["best"] = best_name
     results["importances"] = importances
@@ -484,24 +509,26 @@ def train_classifiers(X_sc: np.ndarray, y: np.ndarray):
 
 
 def cluster_borrowers(X_sc: np.ndarray, df: pd.DataFrame):
-    pca = PCA(n_components=3, random_state=42)
-    X_pca = pca.fit_transform(X_sc)
+    n_components = min(10, X_sc.shape[1])
+    pca = PCA(n_components=n_components, random_state=42)
+    X_pca_full = pca.fit_transform(X_sc)
+    X_pca = X_pca_full[:, :3]
 
     K_range = range(2, 9)
     inertias, sils = [], []
     for k in K_range:
         km = KMeans(n_clusters=k, n_init=15, random_state=42)
-        lbl = km.fit_predict(X_sc)
+        lbl = km.fit_predict(X_pca_full)
         inertias.append(km.inertia_)
-        sils.append(silhouette_score(X_sc, lbl, sample_size=400))
+        sils.append(silhouette_score(X_pca_full, lbl, sample_size=min(400, len(lbl))))
 
     best_k = list(K_range)[np.argmax(sils)]
 
     km_final = KMeans(n_clusters=best_k, n_init=20, random_state=42)
-    km_labels = km_final.fit_predict(X_sc)
+    km_labels = km_final.fit_predict(X_pca_full)
 
     agg = AgglomerativeClustering(n_clusters=best_k, linkage="ward")
-    agg_labels= agg.fit_predict(X_sc)
+    agg_labels = agg.fit_predict(X_pca_full)
 
     nbrs = NearestNeighbors(n_neighbors=8).fit(X_sc)
     dists, _ = nbrs.kneighbors(X_sc)
@@ -511,14 +538,20 @@ def cluster_borrowers(X_sc: np.ndarray, df: pd.DataFrame):
     n_dbs = len(set(dbs_labels)) - (1 if -1 in dbs_labels else 0)
 
     df["cluster"] = km_labels
+    overall_bad_rate = (1 - df["target"].mean()) * 100
     cluster_profiles = {}
     for cl in range(best_k):
         sub = df[df["cluster"] == cl]
         bad_rate = (1 - sub["target"].mean()) * 100
-        profile = ("Risky" if bad_rate > 40 else "Reliable" if bad_rate < 15 else "Medium")
+        if bad_rate > overall_bad_rate * 1.35:
+            profile = "Risky"
+        elif bad_rate < overall_bad_rate * 0.65:
+            profile = "Reliable"
+        else:
+            profile = "Medium"
         cluster_profiles[cl] = dict(n=len(sub), bad_rate=bad_rate, profile=profile)
 
-    Z_link = linkage(X_sc[:100], method="ward")
+    Z_link = linkage(X_pca_full[:100], method="ward")
 
     return dict(
         X_pca=X_pca, km_labels=km_labels, agg_labels=agg_labels,
@@ -528,12 +561,12 @@ def cluster_borrowers(X_sc: np.ndarray, df: pd.DataFrame):
     )
 
 
-def plot_eda_score_distribution(df, fname):
+def plot_eda_score_distribution(df, fname, approve_thresh):
     fig, ax = plt.subplots(figsize=(12, 6), facecolor=C["bg"])
     for tgt, lbl, clr in [(1, "Returned", C["good"]), (0, "Overdue", C["bad"])]:
         vals = df[df["target"] == tgt]["score_raw"]
         ax.hist(vals, bins=40, density=True, alpha=0.65, color=clr, edgecolor=C["grid"], label=f"{lbl} (N={len(vals)})")
-    ax.axvline(430, color=C["gold"], lw=2.0, ls="--", label="Approval threshold")
+    ax.axvline(approve_thresh, color=C["gold"], lw=2.0, ls="--", label=f"Approval threshold ({approve_thresh:.0f})")
     ax.set_title("Score distribution: Returned vs Overdue", color=C["text"])
     ax.set_xlabel("Scoring Score", color=C["sub"])
     ax.set_ylabel("Density", color=C["sub"])
@@ -549,19 +582,19 @@ def plot_eda_score_distribution(df, fname):
     plt.close(fig)
 
 
-def plot_eda_income_vs_score(df, fname):
+def plot_eda_income_vs_score(df, fname, approve_thresh):
     fig, ax = plt.subplots(figsize=(10, 6), facecolor=C["bg"])
     for tgt, clr, lbl in [(1, C["good"], "Returned"), (0, C["bad"], "Overdue")]:
         sub = df[df["target"] == tgt]
         ax.scatter(sub["monthly_income"].clip(0, 50000), sub["score_raw"], c=clr, s=15, alpha=0.55, label=lbl)
-    ax.axhline(430, color=C["gold"], lw=1.5, ls="--")
+    ax.axhline(approve_thresh, color=C["gold"], lw=1.5, ls="--", label=f"Approval threshold ({approve_thresh:.0f})")
     ax.set_title("Income vs Scoring Score", color=C["text"])
     ax.set_xlabel("Monthly income, UAH", color=C["sub"])
     ax.set_ylabel("Score", color=C["sub"])
     ax.set_facecolor(C["panel"])
     ax.legend(facecolor=C["panel"], edgecolor=C["grid"], labelcolor=C["text"])
     ax.tick_params(colors=C["sub"])
-    for spine in ax.spines.values(): 
+    for spine in ax.spines.values():
         spine.set_edgecolor(C["grid"])
 
     plt.tight_layout()
@@ -570,10 +603,10 @@ def plot_eda_income_vs_score(df, fname):
     plt.close(fig)
 
 
-def plot_eda_dti_vs_score(df, fname):
+def plot_eda_dti_vs_score(df, fname, approve_thresh):
     fig, ax = plt.subplots(figsize=(10, 6), facecolor=C["bg"])
-    sc = ax.scatter(df["dti"].clip(0, 3), df["score_raw"], c=df["target"], cmap=plt.cm.colors.ListedColormap([C["bad"], C["good"]]), s=15, alpha=0.65, edgecolors="none")
-    ax.axhline(430, color=C["gold"], lw=1.5, ls="--")
+    sc = ax.scatter(df["dti"].clip(0, 3), df["score_raw"], c=df["target"], cmap=ListedColormap([C["bad"], C["good"]]), s=15, alpha=0.65, edgecolors="none")
+    ax.axhline(approve_thresh, color=C["gold"], lw=1.5, ls="--", label=f"Approval threshold ({approve_thresh:.0f})")
     ax.axvline(0.7, color=C["c6"], lw=1.5, ls=":")
     ax.set_title("DTI vs Scoring Score", color=C["text"])
     ax.set_xlabel("DTI (debt/income)", color=C["sub"])
@@ -624,7 +657,8 @@ def plot_fraud_isolation_forest(df, fname):
     ax.legend(facecolor=C["panel"], edgecolor=C["grid"], labelcolor=C["text"])
     ax.set_facecolor(C["panel"])
     ax.tick_params(colors=C["sub"])
-    for spine in ax.spines.values(): spine.set_edgecolor(C["grid"])
+    for spine in ax.spines.values():
+        spine.set_edgecolor(C["grid"])
 
     plt.tight_layout()
     path = os.path.join(OUTPUT_DIR, fname)
@@ -636,7 +670,7 @@ def plot_ml_confusion_matrix(clf_res, fname):
     best = clf_res["best"]
     y_te = clf_res[best]["y_te"]
     cm = confusion_matrix(y_te, clf_res[best]["y_pred"])
-    
+
     fig, ax = plt.subplots(figsize=(8, 7), facecolor=C["bg"])
     cmap_cm = LinearSegmentedColormap.from_list("cm", ["#0D1117", C["c0"]])
     im = ax.imshow(cm, cmap=cmap_cm)
@@ -662,7 +696,7 @@ def plot_ml_confusion_matrix(clf_res, fname):
 def plot_clustering_pca_target(df, clu_res, fname):
     fig, ax = plt.subplots(figsize=(10, 8), facecolor=C["bg"])
     X_pca = clu_res["X_pca"]
-    
+
     sc = ax.scatter(X_pca[:, 0], X_pca[:, 1], c=df["target"].values, cmap=ListedColormap([C["bad"], C["good"]]), s=20, alpha=0.65, edgecolors="none")
     ax.set_title("PCA: Returned (green) vs Overdue (red)", color=C["text"])
     ax.set_xlabel("PC1", color=C["sub"])
@@ -681,9 +715,9 @@ def plot_clustering_pca_target(df, clu_res, fname):
 
 def plot_clustering_dendrogram(clu_res, fname):
     fig, ax = plt.subplots(figsize=(12, 8), facecolor=C["bg"])
-    
-    dendrogram(clu_res["Z_link"], ax=ax, truncate_mode="lastp", p=15, show_leaf_counts=True, color_threshold=clu_res["Z_link"][-clu_res["best_k"] + 1, 2], above_threshold_color=C["sub"])
-    
+
+    dendrogram(clu_res["Z_link"], ax=ax, truncate_mode="lastp", p=15, show_leaf_counts=True, color_threshold=clu_res["Z_link"][-(clu_res["best_k"] - 1), 2], above_threshold_color=C["sub"])
+
     ax.set_facecolor(C["panel"])
     ax.tick_params(colors=C["sub"])
     for spine in ax.spines.values():
@@ -701,21 +735,21 @@ def plot_clustering_dendrogram(clu_res, fname):
 def plot_clustering_pca_3d(clu_res, fname):
     fig = plt.figure(figsize=(12, 10), facecolor=C["bg"])
     ax = fig.add_subplot(111, projection="3d")
-    
+
     X_pca = clu_res["X_pca"]
     km_labels = clu_res["km_labels"]
     best_k = clu_res["best_k"]
-    
+
     cmap_k = ListedColormap(PAL8[:best_k])
-    
+
     ax.set_facecolor(C["panel"])
     ax.xaxis.pane.fill = ax.yaxis.pane.fill = ax.zaxis.pane.fill = False
     ax.xaxis.pane.set_edgecolor(C["grid"])
     ax.yaxis.pane.set_edgecolor(C["grid"])
     ax.zaxis.pane.set_edgecolor(C["grid"])
-    
+
     sc = ax.scatter(X_pca[:, 0], X_pca[:, 1], X_pca[:, 2], c=km_labels, cmap=cmap_k, s=15, alpha=0.65)
-    
+
     ax.set_xlabel("PC1", color=C["sub"])
     ax.set_ylabel("PC2", color=C["sub"])
     ax.set_zlabel("PC3", color=C["sub"])
@@ -723,7 +757,7 @@ def plot_clustering_pca_3d(clu_res, fname):
     ax.set_title(f"3D PCA: K-Means (k={best_k})", color=C["text"])
     ax.view_init(elev=20, azim=45)
     ax.grid(color=C["grid"], alpha=0.2)
-    
+
     plt.colorbar(sc, ax=ax, fraction=0.04, label="Cluster")
     plt.tight_layout()
     path = os.path.join(OUTPUT_DIR, fname)
